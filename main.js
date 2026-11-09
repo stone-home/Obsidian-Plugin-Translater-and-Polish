@@ -94,7 +94,7 @@ function modelsUrl(id, baseUrl) {
   }
 }
 function secretId(id) {
-  return `obsidian-translate-block-${id}-api-key`;
+  return `translate-block-${id}-api-key`;
 }
 function parseHeaderLines(raw) {
   const headers = {};
@@ -110,7 +110,7 @@ function parseHeaderLines(raw) {
   }
   return headers;
 }
-var OPENROUTER_REFERER = "https://github.com/stone-home/obsidian-translate-block";
+var OPENROUTER_REFERER = "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block";
 var OPENROUTER_TITLE = "Obsidian Translate Block";
 function buildHeaders(id, apiKey, extraHeadersRaw) {
   const headers = {};

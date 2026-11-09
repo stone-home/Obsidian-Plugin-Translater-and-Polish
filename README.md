@@ -1,4 +1,4 @@
-# Obsidian Translate Block
+# Translate Block
 
 Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
 
@@ -45,7 +45,7 @@ Assign hotkeys to them in **Settings → Hotkeys**.
 
 ## Upgrading from 1.x
 
-Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
+Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin id changed from `obsidian-translate-block` to `translate-block`: install it into `.obsidian/plugins/translate-block/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
 
 Settings are migrated automatically: the old endpoint URL and model list become the Ollama provider's base URL and model list, the default model is bound to both tasks, and an `Authorization: Bearer …` line from *Extra headers* is moved into secret storage as the Ollama API key.
 

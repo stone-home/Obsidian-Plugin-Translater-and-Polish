@@ -90,7 +90,7 @@ export function modelsUrl(id: ProviderId, baseUrl: string): string {
 
 /** Storage id for the provider's API key in `app.secretStorage`. */
 export function secretId(id: ProviderId): string {
-	return `obsidian-translate-block-${id}-api-key`;
+	return `translate-block-${id}-api-key`;
 }
 
 /**
@@ -112,7 +112,7 @@ export function parseHeaderLines(raw: string): Record<string, string> {
 	return headers;
 }
 
-export const OPENROUTER_REFERER = "https://github.com/stone-home/obsidian-translate-block";
+export const OPENROUTER_REFERER = "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block";
 export const OPENROUTER_TITLE = "Obsidian Translate Block";
 
 /**

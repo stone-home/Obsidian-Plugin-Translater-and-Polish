@@ -11,7 +11,7 @@ export function rewrite(partial: Partial<RewriteResult> = {}): RewriteResult {
 
 export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> {
 	const app = new App();
-	const plugin = new TranslateBlockPlugin(app, { id: "obsidian-translate-block" } as any);
+	const plugin = new TranslateBlockPlugin(app, { id: "translate-block" } as any);
 	if (seed !== undefined) (plugin as any).seedData(seed);
 	await plugin.onload();
 	return plugin;
