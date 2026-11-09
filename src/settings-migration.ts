@@ -5,7 +5,6 @@ import {
 	SETTINGS_VERSION,
 	TASK_IDS,
 	TaskBinding,
-	TaskId,
 	TranslateBlockSettings,
 	V2_DEFAULT_PROMPTS,
 	freshDefaultSettings,
