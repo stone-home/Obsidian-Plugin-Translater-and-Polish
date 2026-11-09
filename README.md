@@ -1,52 +1,58 @@
-# Obsidian Translate Block
+# Translate and Polish
 
-Translate fenced code blocks between languages using local or remote AI models (default: local Ollama at `http://localhost:13434`). Also includes a standalone **Translate** side panel that uses the same UI and backend.
+Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
 
-## Translate panel
+Write in a language that is not your first, select the passage, and the plugin gives you two things: a translation into your target language so you can check the meaning, and a rewrite of your original text the way a native speaker would phrase it, with notes on what changed. Either result can be put back into the note.
 
-- Open via the **ribbon** (languages icon) or command palette: **Open Translate Panel**.
-- Opens in the **right sidebar** by default; you can drag the leaf into the main workspace.
-- Stacked layout: Input → controls (languages, model, Translate, Auto) → Output.
-- Panel text and choices are **session-only** (not persisted across Obsidian restarts).
+## Features
 
-## Usage (code blocks)
+- **Quick translate** — a read-only bubble next to the selection. Switch between the direct translation and the native-speaker version, copy it, or jump to the full window. Esc, clicking outside, scrolling or changing panes closes it.
+- **Translate and polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native rewrite of your text* (same language as the input), *Translation* and *Suggestions* explaining what the rewrite changed. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
+- **Translate and replace selection** — no window; the selection is replaced with the direct translation.
+- **Two tasks, two models.** Translation and native rewrite are separate requests, each bound to its own provider and model. A dedicated translation model (for example translategemma on Ollama) can handle the translation while a general instruction-following model does the rewrite. The quick bubble requests the rewrite only when you switch to it.
+- **Three providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
 
-- **Create a translate block** in a note:
+## Commands and menu
 
-````
-```translate-block
-This is the text to translate.
-```
-````
+Right-click a selection to find **Quick translate** and **Translate and polish…** in the editor menu. The command palette offers:
 
-- Optionally, specify languages and model in the fence header (`model` must appear in the Models list in settings):
+| Command | Needs a selection |
+|---|---|
+| Quick translate selection | yes |
+| Open window for selection | yes |
+| Open translate & polish window | no (opens with an empty scratchpad) |
+| Translate and replace selection | yes |
 
-````
-```translate-block source=en target=zh model=llama3
-This is the text to translate.
-```
-````
-
-- In preview mode, each `translate-block` renders with:
-  - **Input panel**: original text (stored permanently in the note).
-  - **Controls bar**: source/target language dropdowns, **model** dropdown, **Translate** button, **Auto** toggle, optional **Save to block**, and status line.
-  - **Output panel**: translated text shown below the input.
-
-- **Manual mode** (default): click **Translate** to send a one-time request.
-- **Auto mode** (per block / panel): enable the **Auto** toggle to poll at the configured interval; translations only run when content or settings change.
+Assign hotkeys to them in **Settings → Hotkeys**.
 
 ## Settings
 
-In the plugin settings, you can configure:
+- **Translation model** and **Native rewrite model** — pick any fetched model from any provider for each task.
+- Per provider: **Base URL** (not for OpenRouter), **API key** (not for Ollama) and a **Fetch models** button that fills the model pickers.
+- **Default source / target language**.
+- **Translation prompt** — system prompt for the translation model; plain-text replies are expected. Supports `{{sourceLang}}` and `{{targetLang}}`.
+- **Rewrite prompt** — system prompt for the rewrite model. The `### NATIVE` / `### SUGGESTIONS` output format is appended automatically unless the prompt already contains `### NATIVE`; replies without markers are shown as the rewrite.
+- **Live translate delay** — pause length before the window re-translates (default 800 ms).
+- **Max text size**, **Request timeout**, **Max attempts**, per-provider **Extra headers**, **Debug**.
 
-- **Endpoint URL** (default `http://localhost:13434/api/chat`)
-- **Models** — one model name per line; fills all model dropdowns
-- **Default model** — dropdown from the Models list
-- **Default prompt** (uses `{{sourceLang}}` and `{{targetLang}}` placeholders)
-- **Default source/target languages**
-- **Poll interval (ms)** — default `1000`, minimum `500`
-- **Max attempts** per translation job
-- **Request timeout (ms)**
-- **Max block size** (characters) for auto-translate
-- **Extra headers** (e.g. `Authorization: Bearer ...`) for remote APIs
-- **Debug** — console logging for translation requests
+### Provider endpoints
+
+| Provider | Chat | Models |
+|---|---|---|
+| Ollama | `{baseUrl}/api/chat` | `{baseUrl}/api/tags` |
+| Open WebUI | `{baseUrl}/api/chat/completions` | `{baseUrl}/api/models` |
+| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `https://openrouter.ai/api/v1/models` |
+
+## Upgrading from 1.x
+
+Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin was renamed to Translate and Polish and its id changed from `obsidian-translate-block` to `translate-polish`: install it into `.obsidian/plugins/translate-polish/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
+
+Settings are migrated automatically: the old endpoint URL and model list become the Ollama provider's base URL and model list, the default model is bound to both tasks, and an `Authorization: Bearer …` line from *Extra headers* is moved into secret storage as the Ollama API key.
+
+## Development
+
+```bash
+npm install
+npm test        # unit tests for the response parser, settings migration and provider mapping
+npm run build   # type-check and bundle main.js / styles.css
+```

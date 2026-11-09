@@ -35,16 +35,23 @@ export function resolveModel(list: string[], preferred: string | undefined): str
 }
 
 /**
- * Fills a `<select>` with model options and selects `current` (resolved against the list).
+ * Fills a `<select>` strictly from `models`; an empty list yields one disabled
+ * placeholder option so no phantom model is offered.
  */
-export function populateModelSelect(select: HTMLSelectElement, models: string[], current: string): void {
-	const list = models.length > 0 ? models : parseModelList("");
-	const selected = resolveModel(list, current);
+export function fillModelSelect(select: HTMLSelectElement, models: string[], current: string): string {
 	select.empty();
-	for (const value of list) {
-		const opt = select.createEl("option", { value, text: value });
-		if (value === selected) {
-			opt.selected = true;
-		}
+	if (models.length === 0) {
+		const opt = select.createEl("option", { value: "", text: "No models. Fetch in settings." });
+		opt.disabled = true;
+		opt.selected = true;
+		select.disabled = true;
+		return "";
 	}
+	select.disabled = false;
+	const selected = models.includes(current) ? current : models[0];
+	for (const value of models) {
+		const opt = select.createEl("option", { value, text: value });
+		if (value === selected) opt.selected = true;
+	}
+	return selected;
 }

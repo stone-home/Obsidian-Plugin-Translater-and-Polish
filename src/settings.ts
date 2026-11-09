@@ -1,161 +1,152 @@
-import { App, DropdownComponent, PluginSettingTab, Setting } from "obsidian";
-import TranslateBlockPlugin from "./main";
+import { App, ButtonComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
+import TranslatePolishPlugin from "./main";
+import { DEFAULT_SETTINGS, TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
 import { LANGUAGE_OPTIONS, resolveLanguage } from "./languages";
-import { parseModelList, resolveModel } from "./models";
+import { decodeBinding, fillTaskModelSelect } from "./model-picker";
+import {
+	PROVIDER_DEFAULTS,
+	PROVIDER_IDS,
+	PROVIDER_LABELS,
+	ProviderId,
+	normalizeBaseUrl,
+	providerHasBaseUrl,
+	providerUsesApiKey,
+} from "./providers";
 
-export interface TranslateBlockSettings {
-	endpointUrl: string;
-	/** Newline-separated model names for dropdowns. */
-	modelsRaw: string;
-	defaultModel: string;
-	defaultPrompt: string;
-	defaultSourceLang: string;
-	defaultTargetLang: string;
-	pollIntervalMs: number;
-	maxAttempts: number;
-	timeoutMs: number;
-	maxChars: number;
-	/**
-	 * Extra HTTP headers as a newline-separated list of `Key: Value` pairs.
-	 */
-	extraHeadersRaw: string;
-	/** When enabled, debug logs are printed to the console. */
-	debug: boolean;
-}
+export type { TranslatePolishSettings } from "./defaults";
+export { DEFAULT_SETTINGS } from "./defaults";
 
-export const MIN_POLL_INTERVAL_MS = 500;
-
-export const DEFAULT_SETTINGS: TranslateBlockSettings = {
-	endpointUrl: "http://localhost:13434/api/chat",
-	modelsRaw: "llama3",
-	defaultModel: "llama3",
-	defaultPrompt:
-		"You are a translator. The user's next message is the exact text to translate. Translate it from {{sourceLang}} to {{targetLang}}. Reply with nothing but the translated text—no explanations, no \"please provide\" or meta-commentary.",
-	defaultSourceLang: "auto",
-	defaultTargetLang: "en",
-	pollIntervalMs: 1000,
-	maxAttempts: 3,
-	timeoutMs: 20000,
-	maxChars: 4000,
-	extraHeadersRaw: "",
-	debug: false,
+const TASK_DESCRIPTIONS: Record<TaskId, string> = {
+	translate: "Model that translates the text. Dedicated translation models (e.g. translategemma) work well here.",
+	rewrite: "Model that rewrites your text as a native speaker and explains the changes. Needs a general instruction-following model.",
 };
 
-export class TranslateBlockSettingTab extends PluginSettingTab {
-	plugin: TranslateBlockPlugin;
+export class TranslatePolishSettingTab extends PluginSettingTab {
+	plugin: TranslatePolishPlugin;
+	private taskSelects: Partial<Record<TaskId, HTMLSelectElement>> = {};
+	private modelCountEls: Partial<Record<ProviderId, HTMLElement>> = {};
 
-	constructor(app: App, plugin: TranslateBlockPlugin) {
+	constructor(app: App, plugin: TranslatePolishPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
 
 	display(): void {
 		const { containerEl } = this;
-
 		containerEl.empty();
-		containerEl.createEl("h2", { text: "Translate Block Settings" });
+		this.taskSelects = {};
+		this.modelCountEls = {};
 
-		new Setting(containerEl)
-			.setName("Debug")
-			.setDesc("Enable to print debug logs to the browser console (Developer Tools).")
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.debug ?? false)
-					.onChange(async (value) => {
-						this.plugin.settings.debug = value;
+		this.renderTasksSection(containerEl);
+		for (const id of PROVIDER_IDS) {
+			this.renderProviderConfig(containerEl, id);
+		}
+		this.renderTranslationSection(containerEl);
+		this.renderAdvancedSection(containerEl);
+	}
+
+	private renderTasksSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Models").setHeading();
+		for (const task of TASK_IDS) {
+			new Setting(containerEl)
+				.setName(`${TASK_LABELS[task]} model`)
+				.setDesc(TASK_DESCRIPTIONS[task])
+				.addDropdown((dropdown) => {
+					this.taskSelects[task] = dropdown.selectEl;
+					fillTaskModelSelect(dropdown.selectEl, this.plugin.settings, this.plugin.settings.tasks[task]);
+					dropdown.onChange(async (value) => {
+						const binding = decodeBinding(value);
+						if (!binding) return;
+						this.plugin.settings.tasks[task] = binding;
 						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Endpoint URL")
-			.setDesc("Full URL for the translation API endpoint (default: local Ollama at http://localhost:13434/api/chat).")
-			.addText((text) =>
-				text
-					.setPlaceholder(DEFAULT_SETTINGS.endpointUrl)
-					.setValue(this.plugin.settings.endpointUrl)
-					.onChange(async (value) => {
-						this.plugin.settings.endpointUrl = value.trim() || DEFAULT_SETTINGS.endpointUrl;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		const modelList = parseModelList(
-			this.plugin.settings.modelsRaw,
-			this.plugin.settings.defaultModel,
-		);
-		const defaultModel = resolveModel(modelList, this.plugin.settings.defaultModel);
-
-		let defaultModelDropdown: DropdownComponent | undefined;
-
-		new Setting(containerEl)
-			.setName("Models")
-			.setDesc("Model names available in dropdowns, one per line.")
-			.setClass("setting-control-on-new-line")
-			.addTextArea((text) => {
-				text
-					.setPlaceholder("llama3\nmistral\ntranslategemma:27b")
-					.setValue(this.plugin.settings.modelsRaw ?? DEFAULT_SETTINGS.modelsRaw)
-					.onChange(async (value) => {
-						this.plugin.settings.modelsRaw = value;
-						const list = parseModelList(value, this.plugin.settings.defaultModel);
-						this.plugin.settings.defaultModel = resolveModel(list, this.plugin.settings.defaultModel);
-						await this.plugin.saveSettings();
-						this.plugin.refreshWorkspaceModelOptions();
-						// Do not call display() here — it rebuilds the tab and steals focus on Enter/Backspace.
 					});
-				// Refresh Default model options when leaving the textarea (no full tab rebuild).
-				text.inputEl.addEventListener("blur", () => {
-					if (!defaultModelDropdown) return;
-					const list = parseModelList(
-						this.plugin.settings.modelsRaw,
-						this.plugin.settings.defaultModel,
-					);
-					const selected = resolveModel(list, this.plugin.settings.defaultModel);
-					defaultModelDropdown.selectEl.empty();
-					for (const name of list) {
-						defaultModelDropdown.addOption(name, name);
-					}
-					defaultModelDropdown.setValue(selected);
-					this.plugin.settings.defaultModel = selected;
 				});
-			});
+		}
+	}
 
-		new Setting(containerEl)
-			.setName("Default model")
-			.setDesc("Model used when a block or panel does not override it.")
-			.addDropdown((dropdown) => {
-				defaultModelDropdown = dropdown;
-				for (const name of modelList) {
-					dropdown.addOption(name, name);
-				}
-				dropdown.setValue(defaultModel).onChange(async (value) => {
-					const list = parseModelList(
-						this.plugin.settings.modelsRaw,
-						this.plugin.settings.defaultModel,
-					);
-					this.plugin.settings.defaultModel = resolveModel(list, value);
-					await this.plugin.saveSettings();
-					this.plugin.refreshWorkspaceModelOptions();
+	private refreshTaskSelects(): void {
+		for (const task of TASK_IDS) {
+			const select = this.taskSelects[task];
+			if (select) fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
+		}
+	}
+
+	private renderProviderConfig(containerEl: HTMLElement, id: ProviderId): void {
+		const config = this.plugin.settings.providers[id];
+		new Setting(containerEl).setName(PROVIDER_LABELS[id]).setHeading();
+
+		if (providerHasBaseUrl(id)) {
+			new Setting(containerEl)
+				.setName("Base URL")
+				.setDesc(`Server origin, without the endpoint path (default ${PROVIDER_DEFAULTS[id].baseUrl}).`)
+				.addText((text) =>
+					text
+						.setPlaceholder(PROVIDER_DEFAULTS[id].baseUrl)
+						.setValue(config.baseUrl)
+						.onChange(async (value) => {
+							config.baseUrl = normalizeBaseUrl(id, value);
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		if (providerUsesApiKey(id)) {
+			new Setting(containerEl)
+				.setName("API key")
+				.setDesc("Stored in Obsidian's secret storage, not in the plugin data file.")
+				.addText((text) => {
+					text.inputEl.type = "password";
+					text.inputEl.autocomplete = "off";
+					const save = debounce((value: string) => this.plugin.setApiKey(id, value.trim()), 400, true);
+					text.setPlaceholder("sk-…")
+						.setValue(this.plugin.getApiKey(id))
+						.onChange((value) => save(value));
+					text.inputEl.addEventListener("blur", () => save.run());
 				});
+		}
+
+		const modelsSetting = new Setting(containerEl)
+			.setName("Available models")
+			.setDesc(this.modelCountText(id));
+		this.modelCountEls[id] = modelsSetting.descEl;
+		modelsSetting.addButton((button: ButtonComponent) => {
+			button.setButtonText("Fetch models").onClick(async () => {
+				button.setDisabled(true).setButtonText("Fetching…");
+				try {
+					const models = await this.plugin.fetchModels(id);
+					this.modelCountEls[id]?.setText(this.modelCountText(id));
+					this.refreshTaskSelects();
+					new Notice(`Fetched ${models.length} model${models.length === 1 ? "" : "s"} from ${PROVIDER_LABELS[id]}.`);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					new Notice(`Could not fetch models from ${PROVIDER_LABELS[id]}: ${message}`);
+				} finally {
+					button.setDisabled(false).setButtonText("Fetch models");
+				}
 			});
+		});
+	}
+
+	private modelCountText(id: ProviderId): string {
+		const count = this.plugin.settings.providers[id].models.length;
+		if (count === 0) return "No models fetched yet. They appear in the model pickers above once fetched.";
+		return `${count} model${count === 1 ? "" : "s"} available in the model pickers above.`;
+	}
+
+	private renderTranslationSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Translation").setHeading();
 
 		new Setting(containerEl)
 			.setName("Default source language")
-			.setDesc("Language of the source text.")
+			.setDesc("Language you write in. The native rewrite stays in this language.")
 			.addDropdown((dropdown) => {
 				for (const code of LANGUAGE_OPTIONS) {
 					dropdown.addOption(code, code);
 				}
 				dropdown
-					.setValue(
-						resolveLanguage(this.plugin.settings.defaultSourceLang, DEFAULT_SETTINGS.defaultSourceLang),
-					)
+					.setValue(resolveLanguage(this.plugin.settings.defaultSourceLang, DEFAULT_SETTINGS.defaultSourceLang))
 					.onChange(async (value) => {
-						this.plugin.settings.defaultSourceLang = resolveLanguage(
-							value,
-							DEFAULT_SETTINGS.defaultSourceLang,
-						);
+						this.plugin.settings.defaultSourceLang = resolveLanguage(value, DEFAULT_SETTINGS.defaultSourceLang);
 						await this.plugin.saveSettings();
 					});
 			});
@@ -168,105 +159,98 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 					dropdown.addOption(code, code);
 				}
 				dropdown
-					.setValue(
-						resolveLanguage(this.plugin.settings.defaultTargetLang, DEFAULT_SETTINGS.defaultTargetLang),
-					)
+					.setValue(resolveLanguage(this.plugin.settings.defaultTargetLang, DEFAULT_SETTINGS.defaultTargetLang))
 					.onChange(async (value) => {
-						this.plugin.settings.defaultTargetLang = resolveLanguage(
-							value,
-							DEFAULT_SETTINGS.defaultTargetLang,
-						);
+						this.plugin.settings.defaultTargetLang = resolveLanguage(value, DEFAULT_SETTINGS.defaultTargetLang);
 						await this.plugin.saveSettings();
 					});
 			});
 
 		new Setting(containerEl)
-			.setName("Poll interval (ms)")
-			.setDesc("Auto-translate polling interval in milliseconds. Minimum value is 500 ms.")
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_SETTINGS.pollIntervalMs))
-					.setValue(String(this.plugin.settings.pollIntervalMs))
-					.onChange(async (value) => {
-						const parsed = Number(value);
-						const clamped =
-							Number.isFinite(parsed) && parsed > 0
-								? Math.max(MIN_POLL_INTERVAL_MS, Math.floor(parsed))
-								: DEFAULT_SETTINGS.pollIntervalMs;
-						this.plugin.settings.pollIntervalMs = clamped;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Max attempts")
-			.setDesc("Maximum number of retry attempts for a single translation job.")
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_SETTINGS.maxAttempts))
-					.setValue(String(this.plugin.settings.maxAttempts))
-					.onChange(async (value) => {
-						const parsed = Number(value);
-						const next = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_SETTINGS.maxAttempts;
-						this.plugin.settings.maxAttempts = next;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Request timeout (ms)")
-			.setDesc("Timeout for each translation request in milliseconds.")
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_SETTINGS.timeoutMs))
-					.setValue(String(this.plugin.settings.timeoutMs))
-					.onChange(async (value) => {
-						const parsed = Number(value);
-						const next = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_SETTINGS.timeoutMs;
-						this.plugin.settings.timeoutMs = next;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Max block size (characters)")
-			.setDesc("Maximum source text length for auto-translate. Larger blocks require manual translation.")
-			.addText((text) =>
-				text
-					.setPlaceholder(String(DEFAULT_SETTINGS.maxChars))
-					.setValue(String(this.plugin.settings.maxChars))
-					.onChange(async (value) => {
-						const parsed = Number(value);
-						const next = Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_SETTINGS.maxChars;
-						this.plugin.settings.maxChars = next;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(containerEl)
-			.setName("Default prompt")
-			.setDesc("Prompt template for translation. You can use {{sourceLang}} and {{targetLang}} placeholders.")
+			.setName("Translation prompt")
+			.setDesc("System prompt for the translation model. You can use {{sourceLang}} and {{targetLang}}.")
 			.setClass("setting-control-on-new-line")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder(DEFAULT_SETTINGS.defaultPrompt)
-					.setValue(this.plugin.settings.defaultPrompt)
+					.setPlaceholder(DEFAULT_SETTINGS.translatePrompt)
+					.setValue(this.plugin.settings.translatePrompt)
 					.onChange(async (value) => {
-						this.plugin.settings.defaultPrompt = value.trim() || DEFAULT_SETTINGS.defaultPrompt;
+						this.plugin.settings.translatePrompt = value.trim() || DEFAULT_SETTINGS.translatePrompt;
 						await this.plugin.saveSettings();
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName("Extra headers")
-			.setDesc("Optional HTTP headers as `Key: Value`, one per line. Useful for API keys or custom auth.")
+			.setName("Rewrite prompt")
+			.setDesc(
+				"System prompt for the native-rewrite model. The ### NATIVE / ### SUGGESTIONS output format is appended automatically unless the prompt already contains ### NATIVE.",
+			)
 			.setClass("setting-control-on-new-line")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder("Authorization: Bearer YOUR_TOKEN")
-					.setValue(this.plugin.settings.extraHeadersRaw)
+					.setPlaceholder(DEFAULT_SETTINGS.rewritePrompt)
+					.setValue(this.plugin.settings.rewritePrompt)
 					.onChange(async (value) => {
-						this.plugin.settings.extraHeadersRaw = value;
+						this.plugin.settings.rewritePrompt = value.trim() || DEFAULT_SETTINGS.rewritePrompt;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		this.addNumberSetting(containerEl, "Live translate delay (ms)", "How long to wait after typing stops before the translate window re-runs.", "liveDelayMs");
+		this.addNumberSetting(containerEl, "Max text size (characters)", "Longer texts are refused to protect against runaway requests.", "maxChars");
+	}
+
+	private renderAdvancedSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Advanced").setHeading();
+
+		this.addNumberSetting(containerEl, "Request timeout (ms)", "Each request is abandoned after this long.", "timeoutMs");
+		this.addNumberSetting(containerEl, "Max attempts", "Retries for a single request on network or server errors.", "maxAttempts");
+
+		for (const id of PROVIDER_IDS) {
+			const config = this.plugin.settings.providers[id];
+			new Setting(containerEl)
+				.setName(`Extra headers (${PROVIDER_LABELS[id]})`)
+				.setDesc("Optional HTTP headers as Key: Value, one per line.")
+				.setClass("setting-control-on-new-line")
+				.addTextArea((text) =>
+					text
+						.setPlaceholder("X-Custom-Header: value")
+						.setValue(config.extraHeadersRaw)
+						.onChange(async (value) => {
+							config.extraHeadersRaw = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		new Setting(containerEl)
+			.setName("Debug")
+			.setDesc("Print request details to the developer console.")
+			.addToggle((toggle) =>
+				toggle.setValue(this.plugin.settings.debug).onChange(async (value) => {
+					this.plugin.settings.debug = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	private addNumberSetting(
+		containerEl: HTMLElement,
+		name: string,
+		desc: string,
+		key: "liveDelayMs" | "maxChars" | "timeoutMs" | "maxAttempts",
+	): void {
+		new Setting(containerEl)
+			.setName(name)
+			.setDesc(desc)
+			.addText((text) =>
+				text
+					.setPlaceholder(String(DEFAULT_SETTINGS[key]))
+					.setValue(String(this.plugin.settings[key]))
+					.onChange(async (value) => {
+						const parsed = Number(value);
+						this.plugin.settings[key] =
+							Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_SETTINGS[key];
 						await this.plugin.saveSettings();
 					}),
 			);

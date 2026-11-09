@@ -1,9 +1,10 @@
 {
-	"id": "obsidian-translate-block",
-	"name": "Obsidian Translate Block",
+	"id": "translate-polish",
+	"name": "Translate and Polish",
 	"version": "1.1.0",
-	"minAppVersion": "0.15.0",
-	"description": "Translate code blocks between languages using local or remote AI models.",
+	"minAppVersion": "1.11.4",
+	"description": "Translate selected text and rewrite your writing as a native speaker, using OpenRouter, Open WebUI or Ollama models.",
 	"author": "Stone",
-	"authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block/blob/trunk/README.md"
+	"authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block/blob/trunk/README.md",
+	"isDesktopOnly": false
 }
