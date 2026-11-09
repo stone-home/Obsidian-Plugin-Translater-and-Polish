@@ -55,14 +55,20 @@ export class QuickTranslatePopover {
 	private closed = false;
 
 	private readonly onMouseDown = (evt: MouseEvent): void => {
-		if (!(evt.target instanceof Node) || !this.el.contains(evt.target)) {
+		if (!this.isInside(evt.target)) {
 			this.close();
 		}
 	};
 	private readonly onScroll = (evt: Event): void => {
-		if (evt.target instanceof Node && this.el.contains(evt.target)) return;
+		if (this.isInside(evt.target)) return;
 		this.close();
 	};
+
+	/** Popout windows have their own Node class, so use Obsidian's cross-window check. */
+	private isInside(target: EventTarget | null): boolean {
+		const node = target as Node | null;
+		return !!node && typeof node.instanceOf === "function" && node.instanceOf(Node) && this.el.contains(node);
+	}
 	private readonly onResize = (): void => this.close();
 
 	private constructor(

@@ -120,7 +120,7 @@ export default class TranslateBlockPlugin extends Plugin {
 				return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
 			}
 		}
-		if (evt instanceof MouseEvent && (evt.clientX || evt.clientY)) {
+		if (evt && evt.instanceOf(MouseEvent) && (evt.clientX || evt.clientY)) {
 			return { left: evt.clientX, right: evt.clientX, top: evt.clientY, bottom: evt.clientY };
 		}
 		const x = activeWindow.innerWidth / 2 - 200;

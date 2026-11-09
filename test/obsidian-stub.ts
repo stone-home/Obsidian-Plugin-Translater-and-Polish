@@ -2,7 +2,6 @@
  * Test double for the `obsidian` package: just enough behaviour for the plugin's
  * UI modules to run under jsdom. Mirrors the public API shapes used in src/.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export const requestUrl = jest.fn();
 

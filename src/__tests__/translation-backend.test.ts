@@ -124,7 +124,6 @@ describe("HttpTranslationBackend.translate", () => {
 	});
 
 	it("throws when the reply has no content", async () => {
-		const spy = jest.spyOn(console, "error").mockImplementation(() => undefined);
 		mockedRequest.mockResolvedValue(response(200, { choices: [] }));
 		await expect(
 			backend.translate("x", "en", "fr", { ...base, provider: "openrouter", baseUrl: "", model: "m", prompt: "" }),
@@ -133,7 +132,6 @@ describe("HttpTranslationBackend.translate", () => {
 		await expect(
 			backend.translate("x", "en", "fr", { ...base, provider: "ollama", baseUrl: "", model: "m", prompt: "" }),
 		).rejects.toThrow("No content");
-		spy.mockRestore();
 	});
 });
 

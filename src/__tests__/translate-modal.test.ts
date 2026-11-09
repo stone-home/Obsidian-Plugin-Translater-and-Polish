@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Modal, Notice } from "obsidian";
 import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
 import { TranslateModal, buildCallout } from "../translate-modal";

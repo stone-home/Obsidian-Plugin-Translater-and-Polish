@@ -194,7 +194,7 @@ function freshDefaultSettings() {
 // src/languages.ts
 var LANGUAGE_OPTIONS = ["auto", "en", "zh", "ja", "fr", "de", "es"];
 function resolveLanguage(preferred, fallback) {
-  const want = preferred == null ? void 0 : preferred.trim();
+  const want = preferred?.trim();
   if (want && LANGUAGE_OPTIONS.includes(want)) {
     return want;
   }
@@ -217,10 +217,10 @@ function populateLanguageSelect(select, current) {
 // src/models.ts
 var FALLBACK_MODEL = "llama3";
 function parseModelList(raw, fallbackModel) {
-  const fallback = ((fallbackModel == null ? void 0 : fallbackModel.trim()) || FALLBACK_MODEL).trim();
+  const fallback = (fallbackModel?.trim() || FALLBACK_MODEL).trim();
   const seen = /* @__PURE__ */ new Set();
   const result = [];
-  for (const line of (raw != null ? raw : "").split("\n")) {
+  for (const line of (raw ?? "").split("\n")) {
     const name = line.trim();
     if (!name || seen.has(name)) continue;
     seen.add(name);
@@ -233,7 +233,7 @@ function parseModelList(raw, fallbackModel) {
 }
 function resolveModel(list, preferred) {
   const models = list.length > 0 ? list : parseModelList("");
-  const want = preferred == null ? void 0 : preferred.trim();
+  const want = preferred?.trim();
   if (want && models.includes(want)) {
     return want;
   }
@@ -272,11 +272,7 @@ function isSoftErrorMessage(message) {
 }
 var RETRY_DELAY_MS = 300;
 async function runTranslationJob(plugin, input, callbacks, signal) {
-  var _a, _b;
-  const stale = () => {
-    var _a2;
-    return (_a2 = signal == null ? void 0 : signal.isStale()) != null ? _a2 : false;
-  };
+  const stale = () => signal?.isStale() ?? false;
   const text = input.sourceText;
   if (text.trim().length === 0) {
     callbacks.onError("No source text to translate.");
@@ -289,7 +285,7 @@ async function runTranslationJob(plugin, input, callbacks, signal) {
     return void 0;
   }
   const { id: providerId, config } = plugin.getActiveProvider();
-  const wanted = (_a = input.model) != null ? _a : config.selectedModel;
+  const wanted = input.model ?? config.selectedModel;
   const model = config.models.length > 0 ? resolveModel(config.models, wanted) : wanted;
   if (!model) {
     callbacks.onError(`No model selected for ${PROVIDER_LABELS[providerId]}. Fetch models in settings.`);
@@ -299,7 +295,7 @@ async function runTranslationJob(plugin, input, callbacks, signal) {
   const request = {
     ...plugin.buildProviderRequest(providerId),
     model,
-    prompt: (_b = input.prompt) != null ? _b : plugin.settings.defaultPrompt
+    prompt: input.prompt ?? plugin.settings.defaultPrompt
   };
   const maxAttempts = Math.max(1, plugin.settings.maxAttempts);
   let lastError = "Unknown error";
@@ -589,7 +585,6 @@ var TranslateModal = class extends import_obsidian.Modal {
     this.close();
   }
   writeBack(editor, payload, mode) {
-    var _a;
     if (this.hasSelection && this.from && this.to) {
       const unchanged = editor.getRange(this.from, this.to) === this.initialText;
       if (!unchanged) {
@@ -604,7 +599,7 @@ ${payload}`, lineEnd);
         editor.replaceRange(payload, this.from, this.to);
       }
     } else {
-      const at = (_a = this.from) != null ? _a : editor.getCursor();
+      const at = this.from ?? editor.getCursor();
       const insertion = mode === "callout" ? `
 ${payload}
 ` : payload;
@@ -628,12 +623,12 @@ var QuickTranslatePopover = class _QuickTranslatePopover {
     this.seq = 0;
     this.closed = false;
     this.onMouseDown = (evt) => {
-      if (!(evt.target instanceof Node) || !this.el.contains(evt.target)) {
+      if (!this.isInside(evt.target)) {
         this.close();
       }
     };
     this.onScroll = (evt) => {
-      if (evt.target instanceof Node && this.el.contains(evt.target)) return;
+      if (this.isInside(evt.target)) return;
       this.close();
     };
     this.onResize = () => this.close();
@@ -646,16 +641,19 @@ var QuickTranslatePopover = class _QuickTranslatePopover {
     });
   }
   static open(plugin, editor, from, to, text, anchor) {
-    var _a;
-    (_a = _QuickTranslatePopover.current) == null ? void 0 : _a.close();
+    _QuickTranslatePopover.current?.close();
     const popover = new _QuickTranslatePopover(plugin, editor, from, to, text, anchor);
     _QuickTranslatePopover.current = popover;
     popover.mount();
     return popover;
   }
   static closeCurrent() {
-    var _a;
-    (_a = _QuickTranslatePopover.current) == null ? void 0 : _a.close();
+    _QuickTranslatePopover.current?.close();
+  }
+  /** Popout windows have their own Node class, so use Obsidian's cross-window check. */
+  isInside(target) {
+    const node = target;
+    return !!node && typeof node.instanceOf === "function" && node.instanceOf(Node) && this.el.contains(node);
   }
   mount() {
     const header = this.el.createDiv({ cls: "translate-popover-header" });
@@ -1058,7 +1056,7 @@ function parseSuggestionList(block) {
   return out;
 }
 function parseStructuredResponse(rawInput) {
-  const raw = (rawInput != null ? rawInput : "").replace(/\r\n?/g, "\n");
+  const raw = (rawInput ?? "").replace(/\r\n?/g, "\n");
   const text = stripOuterFence(raw.trim());
   const lines = text.split("\n");
   const sections = { direct: [], native: [], suggestions: [] };
@@ -1129,7 +1127,7 @@ function debugLog(request, ...args) {
 function parseJsonBody(response) {
   try {
     return response.json;
-  } catch (e) {
+  } catch {
     throw new Error(`HTTP ${response.status}: response was not JSON (${(response.text || "").trim().slice(0, 120)})`);
   }
 }
@@ -1164,7 +1162,7 @@ var HttpTranslationBackend = class {
     }
     const content = extractContent(request.provider, parseJsonBody(response));
     if (!content) {
-      console.error("[translate-block] Unexpected response shape:", response.text);
+      debugLog(request, "Unexpected response shape:", response.text);
       throw new Error("No content in translation response.");
     }
     const parsed = parseStructuredResponse(content);
@@ -1194,15 +1192,14 @@ var HttpTranslationBackend = class {
   }
 };
 function extractContent(provider, json) {
-  var _a, _b, _c, _d;
   if (!json || typeof json !== "object") return void 0;
   if (provider === "ollama") {
     const data2 = json;
-    const content2 = (_a = data2.message) == null ? void 0 : _a.content;
+    const content2 = data2.message?.content;
     return typeof content2 === "string" ? content2.trim() : void 0;
   }
   const data = json;
-  const content = (_d = (_c = (_b = data.choices) == null ? void 0 : _b[0]) == null ? void 0 : _c.message) == null ? void 0 : _d.content;
+  const content = data.choices?.[0]?.message?.content;
   return typeof content === "string" ? content.trim() : void 0;
 }
 
@@ -1301,7 +1298,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
         return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
       }
     }
-    if (evt instanceof MouseEvent && (evt.clientX || evt.clientY)) {
+    if (evt && evt.instanceOf(MouseEvent) && (evt.clientX || evt.clientY)) {
       return { left: evt.clientX, right: evt.clientX, top: evt.clientY, bottom: evt.clientY };
     }
     const x = activeWindow.innerWidth / 2 - 200;
@@ -1351,8 +1348,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
     return { id, config: this.settings.providers[id] };
   }
   getApiKey(id) {
-    var _a;
-    return (_a = this.app.secretStorage.getSecret(secretId(id))) != null ? _a : "";
+    return this.app.secretStorage.getSecret(secretId(id)) ?? "";
   }
   setApiKey(id, value) {
     try {

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { runTranslationJob } from "../translation-job";
 import { result } from "../../test/helpers";
 

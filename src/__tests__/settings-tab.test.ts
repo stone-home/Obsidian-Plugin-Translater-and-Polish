@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Notice, Setting } from "obsidian";
 import { flush, makePlugin } from "../../test/helpers";
 import { TranslateBlockSettingTab, populateModelDropdown } from "../settings";

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Modal, Notice } from "obsidian";
 import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
 import { QuickTranslatePopover } from "../quick-translate-popover";
@@ -89,7 +88,7 @@ describe("QuickTranslatePopover", () => {
 	});
 
 	it("closes on Escape, outside click, scroll, resize and leaf change, but not inside interactions", async () => {
-		let { el, popover } = open();
+		const { el, popover } = open();
 		el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
 		el.querySelector(".translate-popover-body")!.dispatchEvent(new Event("scroll", { bubbles: true }));
 		expect(document.querySelector(".translate-popover")).not.toBeNull();
@@ -108,7 +107,7 @@ describe("QuickTranslatePopover", () => {
 		window.dispatchEvent(new Event("resize"));
 		expect(document.querySelector(".translate-popover")).toBeNull();
 
-		({ el, popover } = open());
+		open();
 		plugin.app.workspace.trigger("active-leaf-change", null);
 		expect(document.querySelector(".translate-popover")).toBeNull();
 		expect(plugin.app.workspace.listenerCount("active-leaf-change")).toBe(0);

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Menu, Modal, Notice } from "obsidian";
 import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
 import { secretId } from "../providers";

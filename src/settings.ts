@@ -1,6 +1,6 @@
 import { App, ButtonComponent, DropdownComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
 import TranslateBlockPlugin from "./main";
-import { DEFAULT_SETTINGS, TranslateBlockSettings } from "./defaults";
+import { DEFAULT_SETTINGS } from "./defaults";
 import { LANGUAGE_OPTIONS, resolveLanguage } from "./languages";
 import {
 	PROVIDER_DEFAULTS,

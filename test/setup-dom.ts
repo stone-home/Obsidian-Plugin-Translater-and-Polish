@@ -2,7 +2,6 @@
  * Replicates the DOM helpers Obsidian adds to Node/HTMLElement prototypes so
  * UI modules run under jsdom. Only the helpers used by src/ are implemented.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 type DomOpts = { cls?: string; text?: string; attr?: Record<string, string>; type?: string; value?: string };
 
@@ -65,6 +64,13 @@ proto.hide = function () {
 };
 proto.setAttr = function (name: string, value: string) {
 	this.setAttribute(name, value);
+};
+
+nodeProto.instanceOf = function (type: any) {
+	return this instanceof type;
+};
+(globalThis as any).Event.prototype.instanceOf = function (type: any) {
+	return this instanceof type;
 };
 
 (globalThis as any).activeWindow = window;

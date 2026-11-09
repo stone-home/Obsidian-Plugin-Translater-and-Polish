@@ -129,7 +129,7 @@ export class HttpTranslationBackend implements TranslationBackend {
 
 		const content = extractContent(request.provider, parseJsonBody(response));
 		if (!content) {
-			console.error("[translate-block] Unexpected response shape:", response.text);
+			debugLog(request, "Unexpected response shape:", response.text);
 			throw new Error("No content in translation response.");
 		}
 		const parsed = parseStructuredResponse(content);

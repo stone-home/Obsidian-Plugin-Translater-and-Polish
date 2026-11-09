@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { App, Editor } from "obsidian";
 import TranslateBlockPlugin from "../src/main";
 import { StructuredTranslation } from "../src/response-parser";
@@ -15,7 +14,7 @@ export function result(partial: Partial<StructuredTranslation> = {}): Structured
 
 export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> {
 	const app = new App();
-	const plugin = new TranslateBlockPlugin(app as any, { id: "obsidian-translate-block" } as any);
+	const plugin = new TranslateBlockPlugin(app, { id: "obsidian-translate-block" } as any);
 	if (seed !== undefined) (plugin as any).seedData(seed);
 	await plugin.onload();
 	return plugin;
