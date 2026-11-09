@@ -1,4 +1,4 @@
-import { MarkdownPostProcessorContext, Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { Editor, MarkdownPostProcessorContext, Menu, Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { populateModelSelect, resolveModel } from "./models";
 import { resolveLanguage } from "./languages";
 import { DEFAULT_SETTINGS, TranslateBlockSettingTab, TranslateBlockSettings } from "./settings";
@@ -6,6 +6,9 @@ import { freshDefaultSettings } from "./defaults";
 import { PROVIDER_LABELS, ProviderConfig, ProviderId, secretId } from "./providers";
 import { migrateSettings } from "./settings-migration";
 import { ProviderRequest, TranslationBackend, createDefaultBackend } from "./translation-backend";
+import { PopoverAnchor, QuickTranslatePopover } from "./quick-translate-popover";
+import { TranslateModal } from "./translate-modal";
+import { runTranslationJob } from "./translation-job";
 import { TranslatePanelView, VIEW_TYPE_TRANSLATE_PANEL } from "./translate-panel-view";
 import {
 	TranslateWorkspaceHost,
@@ -43,7 +46,135 @@ export default class TranslateBlockPlugin extends Plugin {
 
 		this.addSettingTab(new TranslateBlockSettingTab(this.app, this));
 
+		this.registerSelectionCommands();
 		this.startPolling();
+	}
+
+	private registerSelectionCommands(): void {
+		this.registerEvent(
+			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
+				if (!editor.somethingSelected()) return;
+				menu.addItem((item) =>
+					item
+						.setTitle("Quick translate")
+						.setIcon("languages")
+						.setSection("translate-block")
+						.onClick((evt) => this.openQuickTranslate(editor, evt)),
+				);
+				menu.addItem((item) =>
+					item
+						.setTitle("Translate & polish…")
+						.setIcon("languages")
+						.setSection("translate-block")
+						.onClick(() => this.openTranslateModal(editor)),
+				);
+			}),
+		);
+
+		this.addCommand({
+			id: "quick-translate-selection",
+			name: "Quick translate selection",
+			editorCheckCallback: (checking, editor) => {
+				if (!editor.somethingSelected()) return false;
+				if (!checking) this.openQuickTranslate(editor);
+				return true;
+			},
+		});
+		this.addCommand({
+			id: "translate-polish-selection",
+			name: "Translate & polish selection",
+			editorCheckCallback: (checking, editor) => {
+				if (!editor.somethingSelected()) return false;
+				if (!checking) this.openTranslateModal(editor);
+				return true;
+			},
+		});
+		this.addCommand({
+			id: "open-translate-modal",
+			name: "Open translate & polish window",
+			editorCallback: (editor) => this.openTranslateModal(editor),
+		});
+		this.addCommand({
+			id: "translate-replace-selection",
+			name: "Translate and replace selection",
+			editorCheckCallback: (checking, editor) => {
+				if (!editor.somethingSelected()) return false;
+				if (!checking) void this.translateAndReplaceSelection(editor);
+				return true;
+			},
+		});
+	}
+
+	openTranslateModal(editor: Editor): void {
+		QuickTranslatePopover.closeCurrent();
+		const selection = editor.getSelection();
+		const from = editor.getCursor("from");
+		const to = editor.getCursor("to");
+		new TranslateModal(this.app, this, editor, from, to, selection).open();
+	}
+
+	openQuickTranslate(editor: Editor, evt?: MouseEvent | KeyboardEvent): void {
+		const selection = editor.getSelection();
+		if (!selection) return;
+		const from = editor.getCursor("from");
+		const to = editor.getCursor("to");
+		QuickTranslatePopover.open(this, editor, from, to, selection, this.selectionAnchor(evt));
+	}
+
+	/** Screen rectangle of the DOM selection, else the pointer, else the viewport's upper third. */
+	private selectionAnchor(evt?: MouseEvent | KeyboardEvent): PopoverAnchor {
+		const domSelection = activeWindow.getSelection();
+		if (domSelection && domSelection.rangeCount > 0) {
+			const rect = domSelection.getRangeAt(0).getBoundingClientRect();
+			if (rect.width > 0 || rect.height > 0) {
+				return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+			}
+		}
+		if (evt instanceof MouseEvent && (evt.clientX || evt.clientY)) {
+			return { left: evt.clientX, right: evt.clientX, top: evt.clientY, bottom: evt.clientY };
+		}
+		const x = activeWindow.innerWidth / 2 - 200;
+		const y = activeWindow.innerHeight / 3;
+		return { left: x, right: x, top: y, bottom: y };
+	}
+
+	async translateAndReplaceSelection(editor: Editor): Promise<void> {
+		const selection = editor.getSelection();
+		if (!selection) return;
+		const from = editor.getCursor("from");
+		const to = editor.getCursor("to");
+		const notice = new Notice("Translating…", 0);
+		await runTranslationJob(
+			this,
+			{
+				sourceText: selection,
+				sourceLang: this.settings.defaultSourceLang,
+				targetLang: this.settings.defaultTargetLang,
+			},
+			{
+				onStatus: (message) => notice.setMessage(message),
+				onResult: (result) => {
+					if (editor.getRange(from, to) !== selection) {
+						notice.hide();
+						new Notice("Selection changed while translating; nothing was replaced.");
+						return;
+					}
+					editor.replaceRange(result.directTranslation, from, to);
+					notice.hide();
+				},
+				onError: (message) => {
+					notice.setMessage(message);
+					window.setTimeout(() => notice.hide(), 6000);
+				},
+			},
+		);
+	}
+
+	getBackend(): TranslationBackend {
+		if (!this.backend) {
+			this.backend = createDefaultBackend();
+		}
+		return this.backend;
 	}
 
 	onunload() {
@@ -403,99 +534,42 @@ export default class TranslateBlockPlugin extends Plugin {
 	}
 
 	private async runTranslationJob(blockId: string) {
-		if (!this.backend) {
-			this.backend = createDefaultBackend();
-		}
 		const state = this.workspaceStates.get(blockId);
-		if (!state) return;
-
-		if (state.inFlight) {
-			return;
-		}
-
-		if (state.sourceText.length === 0) {
-			state.outputEl.empty();
-			state.statusEl.setText("No source text to translate.");
-			return;
-		}
-
-		if (state.sourceText.length > this.settings.maxChars) {
-			state.statusEl.setText(
-				`Block too large (${state.sourceText.length} chars). Reduce size or increase max block size in settings.`,
-			);
-			return;
-		}
-
+		if (!state || state.inFlight) return;
 		state.inFlight = true;
 		state.lastError = undefined;
-		state.statusEl.setText("Translating…");
-
 		const hash = this.computeHash(state);
-		const maxAttempts = this.settings.maxAttempts;
-		let attempt = 0;
-		let lastErrorMessage: string | undefined;
-
-		const { id: providerId, config } = this.getActiveProvider();
-		const model = config.models.length > 0 ? resolveModel(config.models, state.model) : config.selectedModel;
-		if (!model) {
-			state.inFlight = false;
-			state.statusEl.setText(`No model selected for ${PROVIDER_LABELS[providerId]}. Fetch models in settings.`);
-			return;
-		}
-
-		while (attempt < maxAttempts) {
-			attempt += 1;
-			state.retryCount = attempt;
-			try {
-				const result = await this.backend.translate(state.sourceText, state.sourceLang, state.targetLang, {
-					...this.buildProviderRequest(providerId),
-					model,
-					prompt: state.prompt,
-				});
-
-				state.outputEl.empty();
-				const pre = state.outputEl.createEl("pre", {
-					text: result.directTranslation,
-					cls: "translate-block-output-pre",
-				});
-				pre.setAttribute("contenteditable", "false");
-
-				state.lastSourceHash = hash;
-				state.retryCount = 0;
-				state.inFlight = false;
-				state.lastUpdatedAt = Date.now();
-				state.statusEl.setText("Translated successfully.");
-				return;
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				lastErrorMessage = message;
-
-				const isSoftError = this.isSoftErrorMessage(message);
-				if (!isSoftError || attempt >= maxAttempts) {
-					break;
-				}
-
-				// eslint-disable-next-line no-await-in-loop
-				await new Promise((resolve) => window.setTimeout(resolve, 300));
-			}
-		}
-
-		state.inFlight = false;
-		state.lastError = lastErrorMessage;
-		state.lastSourceHash = hash;
-		state.statusEl.setText(
-			`Translation failed after ${Math.max(1, state.retryCount)} attempt(s). Last error: ${
-				lastErrorMessage ?? "Unknown error"
-			}`,
+		const result = await runTranslationJob(
+			this,
+			{
+				sourceText: state.sourceText,
+				sourceLang: state.sourceLang,
+				targetLang: state.targetLang,
+				model: state.model,
+				prompt: state.prompt,
+			},
+			{
+				onStatus: (message) => state.statusEl.setText(message),
+				onResult: (translated) => {
+					state.outputEl.empty();
+					const pre = state.outputEl.createEl("pre", {
+						text: translated.directTranslation,
+						cls: "translate-block-output-pre",
+					});
+					pre.setAttribute("contenteditable", "false");
+					state.lastUpdatedAt = Date.now();
+					state.statusEl.setText("Translated successfully.");
+				},
+				onError: (message) => {
+					state.lastError = message;
+					state.statusEl.setText(message);
+				},
+			},
 		);
-		new Notice("Translate Block error. See block status for details.");
-	}
-
-	private isSoftErrorMessage(message: string): boolean {
-		const lower = message.toLowerCase();
-		if (lower.includes("timeout") || lower.includes("network")) return true;
-		if (lower.includes("502") || lower.includes("503") || lower.includes("504") || lower.includes("500"))
-			return true;
-		return false;
+		state.inFlight = false;
+		state.lastSourceHash = hash;
+		if (!result) {
+			new Notice("Translate Block error. See status for details.");
+		}
 	}
 }

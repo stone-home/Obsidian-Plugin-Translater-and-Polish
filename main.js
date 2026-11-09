@@ -28,7 +28,7 @@ __export(main_exports, {
   default: () => TranslateBlockPlugin
 });
 module.exports = __toCommonJS(main_exports);
-var import_obsidian4 = require("obsidian");
+var import_obsidian6 = require("obsidian");
 
 // src/models.ts
 var FALLBACK_MODEL = "llama3";
@@ -65,6 +65,23 @@ function populateModelSelect(select, models, current) {
       opt.selected = true;
     }
   }
+}
+function fillModelSelect(select, models, current) {
+  select.empty();
+  if (models.length === 0) {
+    const opt = select.createEl("option", { value: "", text: "No models. Fetch in settings." });
+    opt.disabled = true;
+    opt.selected = true;
+    select.disabled = true;
+    return "";
+  }
+  select.disabled = false;
+  const selected = models.includes(current) ? current : models[0];
+  for (const value of models) {
+    const opt = select.createEl("option", { value, text: value });
+    if (value === selected) opt.selected = true;
+  }
+  return selected;
 }
 
 // src/languages.ts
@@ -681,8 +698,501 @@ function extractContent(provider, json) {
   return typeof content === "string" ? content.trim() : void 0;
 }
 
-// src/translate-panel-view.ts
+// src/quick-translate-popover.ts
+var import_obsidian4 = require("obsidian");
+
+// src/translate-modal.ts
 var import_obsidian3 = require("obsidian");
+
+// src/translation-job.ts
+function isSoftErrorMessage(message) {
+  const lower = message.toLowerCase();
+  if (lower.includes("timeout") || lower.includes("network")) return true;
+  return /\b50[0234]\b/.test(lower);
+}
+var RETRY_DELAY_MS = 300;
+async function runTranslationJob(plugin, input, callbacks, signal) {
+  var _a, _b;
+  const stale = () => {
+    var _a2;
+    return (_a2 = signal == null ? void 0 : signal.isStale()) != null ? _a2 : false;
+  };
+  const text = input.sourceText;
+  if (text.trim().length === 0) {
+    callbacks.onError("No source text to translate.");
+    return void 0;
+  }
+  if (text.length > plugin.settings.maxChars) {
+    callbacks.onError(
+      `Text too long (${text.length} chars). Reduce it or raise the max text size in settings.`
+    );
+    return void 0;
+  }
+  const { id: providerId, config } = plugin.getActiveProvider();
+  const wanted = (_a = input.model) != null ? _a : config.selectedModel;
+  const model = config.models.length > 0 ? resolveModel(config.models, wanted) : wanted;
+  if (!model) {
+    callbacks.onError(`No model selected for ${PROVIDER_LABELS[providerId]}. Fetch models in settings.`);
+    return void 0;
+  }
+  const backend = plugin.getBackend();
+  const request = {
+    ...plugin.buildProviderRequest(providerId),
+    model,
+    prompt: (_b = input.prompt) != null ? _b : plugin.settings.defaultPrompt
+  };
+  const maxAttempts = Math.max(1, plugin.settings.maxAttempts);
+  let lastError = "Unknown error";
+  callbacks.onStatus("Translating\u2026");
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await backend.translate(text, input.sourceLang, input.targetLang, request);
+      if (stale()) return void 0;
+      callbacks.onResult(result);
+      return result;
+    } catch (error) {
+      if (stale()) return void 0;
+      lastError = error instanceof Error ? error.message : String(error);
+      if (!isSoftErrorMessage(lastError) || attempt >= maxAttempts) break;
+      callbacks.onStatus(`Retrying (${attempt + 1}/${maxAttempts})\u2026`);
+      await new Promise((resolve) => window.setTimeout(resolve, RETRY_DELAY_MS));
+      if (stale()) return void 0;
+    }
+  }
+  callbacks.onError(`Translation failed: ${lastError}`);
+  return void 0;
+}
+
+// src/translate-modal.ts
+function buildCallout(text, targetLang) {
+  const body = text.split("\n").map((line) => `> ${line}`);
+  return [`> [!translate] ${targetLang}`, ...body].join("\n");
+}
+var TranslateModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, editor, from, to, initialText) {
+    super(app);
+    this.seq = 0;
+    this.chosen = "native";
+    this.startedAt = 0;
+    this.plugin = plugin;
+    this.editor = editor;
+    this.from = from;
+    this.to = to;
+    this.initialText = initialText;
+    this.hasSelection = initialText.length > 0 && from !== null && to !== null;
+    this.sourceLang = plugin.settings.defaultSourceLang;
+    this.targetLang = plugin.settings.defaultTargetLang;
+    this.scheduleRun = (0, import_obsidian3.debounce)(
+      () => {
+        void this.run();
+      },
+      this.liveDelay(),
+      true
+    );
+  }
+  liveDelay() {
+    return Math.max(100, this.plugin.settings.liveDelayMs);
+  }
+  onOpen() {
+    this.setTitle("Translate & polish");
+    this.modalEl.addClass("translate-modal");
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("translate-modal-content");
+    this.buildToolbar(contentEl.createDiv({ cls: "translate-modal-toolbar" }));
+    const columns = contentEl.createDiv({ cls: "translate-modal-columns" });
+    this.buildSourceColumn(columns.createDiv({ cls: "translate-modal-source" }));
+    this.buildResultColumn(columns.createDiv({ cls: "translate-modal-results" }));
+    this.buildFooter(contentEl.createDiv({ cls: "translate-modal-footer" }));
+    this.scope.register(["Mod"], "Enter", () => {
+      void this.run();
+      return false;
+    });
+    this.sourceEl.value = this.initialText;
+    window.setTimeout(() => this.sourceEl.focus(), 0);
+    if (this.initialText.trim()) {
+      void this.run();
+    } else {
+      this.setStatus("Type or paste text. Translation runs after you pause.");
+    }
+  }
+  onClose() {
+    this.seq += 1;
+    this.scheduleRun.cancel();
+    this.contentEl.empty();
+  }
+  buildToolbar(bar) {
+    const providerSelect = bar.createEl("select", { cls: "dropdown" });
+    for (const id of PROVIDER_IDS) {
+      const opt = providerSelect.createEl("option", { value: id, text: PROVIDER_LABELS[id] });
+      if (id === this.plugin.settings.activeProvider) opt.selected = true;
+    }
+    providerSelect.addEventListener("change", () => {
+      void (async () => {
+        this.plugin.settings.activeProvider = providerSelect.value;
+        await this.plugin.saveSettings();
+        this.refreshModelSelect();
+        this.scheduleRun();
+      })();
+    });
+    this.modelSelect = bar.createEl("select", { cls: "dropdown translate-modal-model" });
+    this.refreshModelSelect();
+    this.modelSelect.addEventListener("change", () => {
+      void (async () => {
+        const { config } = this.plugin.getActiveProvider();
+        config.selectedModel = this.modelSelect.value;
+        await this.plugin.saveSettings();
+        this.scheduleRun();
+      })();
+    });
+    const refresh = bar.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": "Fetch models" } });
+    (0, import_obsidian3.setIcon)(refresh, "refresh-cw");
+    refresh.addEventListener("click", () => {
+      void (async () => {
+        refresh.addClass("is-loading");
+        try {
+          const models = await this.plugin.fetchModels(this.plugin.settings.activeProvider);
+          this.refreshModelSelect();
+          new import_obsidian3.Notice(`Fetched ${models.length} models.`);
+        } catch (error) {
+          new import_obsidian3.Notice(`Could not fetch models: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          refresh.removeClass("is-loading");
+        }
+      })();
+    });
+    bar.createDiv({ cls: "translate-modal-spacer" });
+    const sourceSelect = bar.createEl("select", { cls: "dropdown" });
+    populateLanguageSelect(sourceSelect, this.sourceLang);
+    sourceSelect.addEventListener("change", () => {
+      this.sourceLang = sourceSelect.value;
+      this.scheduleRun();
+    });
+    const swap = bar.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": "Swap languages" } });
+    (0, import_obsidian3.setIcon)(swap, "arrow-left-right");
+    swap.addEventListener("click", () => {
+      if (this.sourceLang === "auto") {
+        new import_obsidian3.Notice("Pick a source language before swapping.");
+        return;
+      }
+      const next = this.sourceLang;
+      this.sourceLang = this.targetLang;
+      this.targetLang = next;
+      populateLanguageSelect(sourceSelect, this.sourceLang);
+      populateLanguageSelect(targetSelect, this.targetLang);
+      this.scheduleRun();
+    });
+    const targetSelect = bar.createEl("select", { cls: "dropdown" });
+    populateLanguageSelect(targetSelect, this.targetLang);
+    targetSelect.addEventListener("change", () => {
+      this.targetLang = targetSelect.value;
+      this.scheduleRun();
+    });
+  }
+  refreshModelSelect() {
+    const { config } = this.plugin.getActiveProvider();
+    fillModelSelect(this.modelSelect, config.models, config.selectedModel);
+  }
+  buildSourceColumn(column) {
+    column.createDiv({ cls: "translate-modal-label", text: "Source" });
+    this.sourceEl = column.createEl("textarea", { cls: "translate-modal-textarea" });
+    this.sourceEl.spellcheck = true;
+    this.sourceEl.placeholder = "Type or paste text to translate\u2026";
+    this.sourceEl.addEventListener("input", () => {
+      if (this.sourceEl.value.trim()) {
+        this.scheduleRun();
+      } else {
+        this.scheduleRun.cancel();
+        this.seq += 1;
+        this.setStatus("Waiting for text.");
+      }
+    });
+    this.statusEl = column.createDiv({ cls: "translate-modal-status" });
+  }
+  buildResultColumn(column) {
+    const native = this.buildCard(column, "native", "Native polish");
+    this.nativeCard = native.card;
+    this.nativeBody = native.body;
+    const direct = this.buildCard(column, "direct", "Direct translation");
+    this.directCard = direct.card;
+    this.directBody = direct.body;
+    this.suggestionsEl = column.createEl("details", { cls: "translate-suggestions" });
+    this.suggestionsSummary = this.suggestionsEl.createEl("summary", { text: "Suggestions" });
+    this.suggestionsList = this.suggestionsEl.createEl("ul");
+    this.suggestionsEl.hide();
+    this.updateChosenHighlight();
+  }
+  buildCard(parent, variant, title) {
+    const card = parent.createDiv({ cls: `translate-card translate-card--${variant}` });
+    const header = card.createDiv({ cls: "translate-card-header" });
+    header.createSpan({ cls: "translate-card-title", text: title });
+    const use = header.createEl("button", { cls: "translate-card-use", text: "Use this" });
+    use.addEventListener("click", () => {
+      this.chosen = variant;
+      this.updateChosenHighlight();
+    });
+    const body = card.createDiv({ cls: "translate-card-body", text: "\u2014" });
+    return { card, body };
+  }
+  buildFooter(footer) {
+    const translateNow = footer.createEl("button", { text: "Translate now" });
+    translateNow.setAttribute("aria-label", "Translate now (Ctrl/Cmd+Enter)");
+    translateNow.addEventListener("click", () => {
+      void this.run();
+    });
+    footer.createDiv({ cls: "translate-modal-spacer" });
+    this.applyButton = footer.createEl("button", {
+      cls: "mod-cta",
+      text: this.hasSelection ? "Replace selection" : "Insert at cursor"
+    });
+    this.applyButton.addEventListener("click", () => this.applyToEditor("plain"));
+    this.calloutButton = footer.createEl("button", { text: "Insert as callout" });
+    this.calloutButton.addEventListener("click", () => this.applyToEditor("callout"));
+    this.copyButton = footer.createEl("button", { text: "Copy" });
+    this.copyButton.addEventListener("click", () => {
+      void navigator.clipboard.writeText(this.chosenText()).then(() => new import_obsidian3.Notice("Copied to clipboard."));
+    });
+    this.setResultButtonsEnabled(false);
+  }
+  setResultButtonsEnabled(enabled) {
+    const editable = enabled && this.editor !== null;
+    this.applyButton.disabled = !editable;
+    this.calloutButton.disabled = !editable;
+    this.copyButton.disabled = !enabled;
+  }
+  setStatus(message) {
+    this.statusEl.setText(message);
+  }
+  async run() {
+    this.scheduleRun.cancel();
+    const text = this.sourceEl.value;
+    const my = ++this.seq;
+    this.startedAt = Date.now();
+    await runTranslationJob(
+      this.plugin,
+      { sourceText: text, sourceLang: this.sourceLang, targetLang: this.targetLang },
+      {
+        onStatus: (message) => this.setStatus(message),
+        onResult: (result) => this.renderResult(result, text.length),
+        onError: (message) => {
+          this.setStatus(message);
+        }
+      },
+      { isStale: () => my !== this.seq }
+    );
+  }
+  renderResult(result, sourceLength) {
+    this.result = result;
+    this.nativeBody.setText(result.nativePolish || "\u2014");
+    this.directBody.setText(result.directTranslation || "\u2014");
+    this.suggestionsList.empty();
+    if (result.suggestions.length > 0) {
+      for (const item of result.suggestions) {
+        this.suggestionsList.createEl("li", { text: item });
+      }
+      this.suggestionsSummary.setText(`Suggestions (${result.suggestions.length})`);
+      this.suggestionsEl.show();
+    } else {
+      this.suggestionsEl.hide();
+    }
+    if (!result.nativePolish && this.chosen === "native") {
+      this.chosen = "direct";
+    }
+    this.updateChosenHighlight();
+    this.setResultButtonsEnabled(Boolean(this.chosenText()));
+    const seconds = ((Date.now() - this.startedAt) / 1e3).toFixed(1);
+    this.setStatus(`Translated in ${seconds} s \xB7 ${sourceLength} chars`);
+  }
+  updateChosenHighlight() {
+    this.nativeCard.toggleClass("is-selected", this.chosen === "native");
+    this.directCard.toggleClass("is-selected", this.chosen === "direct");
+  }
+  chosenText() {
+    if (!this.result) return "";
+    return this.chosen === "native" && this.result.nativePolish ? this.result.nativePolish : this.result.directTranslation;
+  }
+  applyToEditor(mode) {
+    var _a;
+    const text = this.chosenText();
+    if (!text || !this.editor) return;
+    const editor = this.editor;
+    const payload = mode === "callout" ? buildCallout(text, this.targetLang) : text;
+    if (this.hasSelection && this.from && this.to) {
+      const unchanged = editor.getRange(this.from, this.to) === this.initialText;
+      if (!unchanged) {
+        editor.replaceRange(payload, editor.getCursor());
+        new import_obsidian3.Notice("Selection changed while translating; inserted at the cursor instead.");
+      } else if (mode === "callout") {
+        const lineEnd = { line: this.to.line, ch: editor.getLine(this.to.line).length };
+        editor.replaceRange(`
+${payload}`, lineEnd);
+      } else {
+        editor.replaceRange(payload, this.from, this.to);
+      }
+    } else {
+      const at = (_a = this.from) != null ? _a : editor.getCursor();
+      const insertion = mode === "callout" ? `
+${payload}
+` : payload;
+      editor.replaceRange(insertion, at);
+    }
+    this.close();
+  }
+};
+
+// src/quick-translate-popover.ts
+var GAP = 6;
+var MARGIN = 8;
+var QuickTranslatePopover = class _QuickTranslatePopover {
+  constructor(plugin, editor, from, to, text, anchor) {
+    this.plugin = plugin;
+    this.editor = editor;
+    this.from = from;
+    this.to = to;
+    this.text = text;
+    this.anchor = anchor;
+    this.variant = "direct";
+    this.seq = 0;
+    this.closed = false;
+    this.onMouseDown = (evt) => {
+      if (!(evt.target instanceof Node) || !this.el.contains(evt.target)) {
+        this.close();
+      }
+    };
+    this.onScroll = (evt) => {
+      if (evt.target instanceof Node && this.el.contains(evt.target)) return;
+      this.close();
+    };
+    this.onResize = () => this.close();
+    this.doc = activeDocument;
+    this.el = this.doc.body.createDiv({ cls: "translate-popover" });
+    this.scope = new import_obsidian4.Scope(plugin.app.scope);
+    this.scope.register([], "Escape", () => {
+      this.close();
+      return false;
+    });
+  }
+  static open(plugin, editor, from, to, text, anchor) {
+    var _a;
+    (_a = _QuickTranslatePopover.current) == null ? void 0 : _a.close();
+    const popover = new _QuickTranslatePopover(plugin, editor, from, to, text, anchor);
+    _QuickTranslatePopover.current = popover;
+    popover.mount();
+    return popover;
+  }
+  static closeCurrent() {
+    var _a;
+    (_a = _QuickTranslatePopover.current) == null ? void 0 : _a.close();
+  }
+  mount() {
+    const header = this.el.createDiv({ cls: "translate-popover-header" });
+    header.createSpan({
+      cls: "translate-popover-langs",
+      text: `${this.plugin.settings.defaultSourceLang} \u2192 ${this.plugin.settings.defaultTargetLang}`
+    });
+    this.variantSelect = header.createEl("select", { cls: "dropdown translate-popover-variant" });
+    this.variantSelect.createEl("option", { value: "direct", text: "Direct" });
+    this.variantSelect.createEl("option", { value: "native", text: "Native polish" });
+    this.variantSelect.addEventListener("change", () => {
+      this.variant = this.variantSelect.value;
+      this.renderBody();
+    });
+    header.createDiv({ cls: "translate-modal-spacer" });
+    this.iconButton(header, "copy", "Copy", () => {
+      const value = this.currentText();
+      if (!value) return;
+      void navigator.clipboard.writeText(value).then(() => new import_obsidian4.Notice("Copied to clipboard."));
+    });
+    this.iconButton(header, "maximize-2", "Open in translate window", () => {
+      this.close();
+      new TranslateModal(this.plugin.app, this.plugin, this.editor, this.from, this.to, this.text).open();
+    });
+    this.iconButton(header, "x", "Close", () => this.close());
+    this.bodyEl = this.el.createDiv({ cls: "translate-popover-body" });
+    this.statusEl = this.el.createDiv({ cls: "translate-popover-status", text: "Translating\u2026" });
+    this.plugin.app.keymap.pushScope(this.scope);
+    this.doc.addEventListener("mousedown", this.onMouseDown, true);
+    this.doc.addEventListener("scroll", this.onScroll, true);
+    activeWindow.addEventListener("resize", this.onResize);
+    this.leafRef = this.plugin.app.workspace.on("active-leaf-change", () => this.close());
+    this.position();
+    void this.run();
+  }
+  iconButton(parent, icon, label, onClick) {
+    const button = parent.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": label } });
+    (0, import_obsidian4.setIcon)(button, icon);
+    button.addEventListener("click", onClick);
+  }
+  async run() {
+    const my = ++this.seq;
+    await runTranslationJob(
+      this.plugin,
+      {
+        sourceText: this.text,
+        sourceLang: this.plugin.settings.defaultSourceLang,
+        targetLang: this.plugin.settings.defaultTargetLang
+      },
+      {
+        onStatus: (message) => this.statusEl.setText(message),
+        onResult: (result) => {
+          this.result = result;
+          if (!result.nativePolish) {
+            this.variantSelect.value = "direct";
+            this.variant = "direct";
+          }
+          this.statusEl.hide();
+          this.renderBody();
+          this.position();
+        },
+        onError: (message) => {
+          this.statusEl.setText(message);
+          this.statusEl.addClass("is-error");
+          this.position();
+        }
+      },
+      { isStale: () => my !== this.seq || this.closed }
+    );
+  }
+  currentText() {
+    if (!this.result) return "";
+    return this.variant === "native" && this.result.nativePolish ? this.result.nativePolish : this.result.directTranslation;
+  }
+  renderBody() {
+    this.bodyEl.setText(this.currentText() || "\u2014");
+  }
+  position() {
+    const vw = activeWindow.innerWidth;
+    const vh = activeWindow.innerHeight;
+    const width = this.el.offsetWidth;
+    const height = this.el.offsetHeight;
+    let left = Math.min(Math.max(this.anchor.left, MARGIN), vw - width - MARGIN);
+    let top = this.anchor.bottom + GAP;
+    if (top + height > vh - MARGIN) {
+      top = this.anchor.top - height - GAP;
+    }
+    if (top < MARGIN) top = MARGIN;
+    if (left < MARGIN) left = MARGIN;
+    this.el.style.left = `${Math.round(left)}px`;
+    this.el.style.top = `${Math.round(top)}px`;
+  }
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    this.seq += 1;
+    this.plugin.app.keymap.popScope(this.scope);
+    this.doc.removeEventListener("mousedown", this.onMouseDown, true);
+    this.doc.removeEventListener("scroll", this.onScroll, true);
+    activeWindow.removeEventListener("resize", this.onResize);
+    if (this.leafRef) this.plugin.app.workspace.offref(this.leafRef);
+    this.el.remove();
+    if (_QuickTranslatePopover.current === this) {
+      _QuickTranslatePopover.current = void 0;
+    }
+  }
+};
+
+// src/translate-panel-view.ts
+var import_obsidian5 = require("obsidian");
 
 // src/translate-workspace.ts
 function mountTranslateWorkspace(parentEl, host, options) {
@@ -801,7 +1311,7 @@ function mountTranslateWorkspace(parentEl, host, options) {
 
 // src/translate-panel-view.ts
 var VIEW_TYPE_TRANSLATE_PANEL = "translate-panel";
-var TranslatePanelView = class extends import_obsidian3.ItemView {
+var TranslatePanelView = class extends import_obsidian5.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.panelWorkspaceId = `translate-panel:${Date.now().toString(36)}`;
@@ -845,7 +1355,7 @@ var TranslatePanelView = class extends import_obsidian3.ItemView {
 };
 
 // src/main.ts
-var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian4.Plugin {
+var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian6.Plugin {
   constructor() {
     super(...arguments);
     this.settings = freshDefaultSettings();
@@ -869,7 +1379,120 @@ var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian4
       this.processTranslateBlock(source, el, ctx);
     });
     this.addSettingTab(new TranslateBlockSettingTab(this.app, this));
+    this.registerSelectionCommands();
     this.startPolling();
+  }
+  registerSelectionCommands() {
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        if (!editor.somethingSelected()) return;
+        menu.addItem(
+          (item) => item.setTitle("Quick translate").setIcon("languages").setSection("translate-block").onClick((evt) => this.openQuickTranslate(editor, evt))
+        );
+        menu.addItem(
+          (item) => item.setTitle("Translate & polish\u2026").setIcon("languages").setSection("translate-block").onClick(() => this.openTranslateModal(editor))
+        );
+      })
+    );
+    this.addCommand({
+      id: "quick-translate-selection",
+      name: "Quick translate selection",
+      editorCheckCallback: (checking, editor) => {
+        if (!editor.somethingSelected()) return false;
+        if (!checking) this.openQuickTranslate(editor);
+        return true;
+      }
+    });
+    this.addCommand({
+      id: "translate-polish-selection",
+      name: "Translate & polish selection",
+      editorCheckCallback: (checking, editor) => {
+        if (!editor.somethingSelected()) return false;
+        if (!checking) this.openTranslateModal(editor);
+        return true;
+      }
+    });
+    this.addCommand({
+      id: "open-translate-modal",
+      name: "Open translate & polish window",
+      editorCallback: (editor) => this.openTranslateModal(editor)
+    });
+    this.addCommand({
+      id: "translate-replace-selection",
+      name: "Translate and replace selection",
+      editorCheckCallback: (checking, editor) => {
+        if (!editor.somethingSelected()) return false;
+        if (!checking) void this.translateAndReplaceSelection(editor);
+        return true;
+      }
+    });
+  }
+  openTranslateModal(editor) {
+    QuickTranslatePopover.closeCurrent();
+    const selection = editor.getSelection();
+    const from = editor.getCursor("from");
+    const to = editor.getCursor("to");
+    new TranslateModal(this.app, this, editor, from, to, selection).open();
+  }
+  openQuickTranslate(editor, evt) {
+    const selection = editor.getSelection();
+    if (!selection) return;
+    const from = editor.getCursor("from");
+    const to = editor.getCursor("to");
+    QuickTranslatePopover.open(this, editor, from, to, selection, this.selectionAnchor(evt));
+  }
+  /** Screen rectangle of the DOM selection, else the pointer, else the viewport's upper third. */
+  selectionAnchor(evt) {
+    const domSelection = activeWindow.getSelection();
+    if (domSelection && domSelection.rangeCount > 0) {
+      const rect = domSelection.getRangeAt(0).getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) {
+        return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+      }
+    }
+    if (evt instanceof MouseEvent && (evt.clientX || evt.clientY)) {
+      return { left: evt.clientX, right: evt.clientX, top: evt.clientY, bottom: evt.clientY };
+    }
+    const x = activeWindow.innerWidth / 2 - 200;
+    const y = activeWindow.innerHeight / 3;
+    return { left: x, right: x, top: y, bottom: y };
+  }
+  async translateAndReplaceSelection(editor) {
+    const selection = editor.getSelection();
+    if (!selection) return;
+    const from = editor.getCursor("from");
+    const to = editor.getCursor("to");
+    const notice = new import_obsidian6.Notice("Translating\u2026", 0);
+    await runTranslationJob(
+      this,
+      {
+        sourceText: selection,
+        sourceLang: this.settings.defaultSourceLang,
+        targetLang: this.settings.defaultTargetLang
+      },
+      {
+        onStatus: (message) => notice.setMessage(message),
+        onResult: (result) => {
+          if (editor.getRange(from, to) !== selection) {
+            notice.hide();
+            new import_obsidian6.Notice("Selection changed while translating; nothing was replaced.");
+            return;
+          }
+          editor.replaceRange(result.directTranslation, from, to);
+          notice.hide();
+        },
+        onError: (message) => {
+          notice.setMessage(message);
+          window.setTimeout(() => notice.hide(), 6e3);
+        }
+      }
+    );
+  }
+  getBackend() {
+    if (!this.backend) {
+      this.backend = createDefaultBackend();
+    }
+    return this.backend;
   }
   onunload() {
     if (this.pollIntervalId !== void 0) {
@@ -904,7 +1527,7 @@ var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian4
     try {
       this.app.secretStorage.setSecret(secretId(id), value);
     } catch (error) {
-      new import_obsidian4.Notice(
+      new import_obsidian6.Notice(
         `Translate Block: could not store ${PROVIDER_LABELS[id]} API key. ` + (error instanceof Error ? error.message : String(error))
       );
     }
@@ -1121,7 +1744,7 @@ var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian4
       const newFileContent = [...before, ...newBlockLines, ...after].join("\n");
       await this.app.vault.modify(file, newFileContent);
     } catch (e) {
-      new import_obsidian4.Notice(
+      new import_obsidian6.Notice(
         "Translate Block: could not update note. " + (e instanceof Error ? e.message : String(e))
       );
     }
@@ -1166,84 +1789,43 @@ var _TranslateBlockPlugin = class _TranslateBlockPlugin extends import_obsidian4
     await this.runTranslationJob(blockId);
   }
   async runTranslationJob(blockId) {
-    if (!this.backend) {
-      this.backend = createDefaultBackend();
-    }
     const state = this.workspaceStates.get(blockId);
-    if (!state) return;
-    if (state.inFlight) {
-      return;
-    }
-    if (state.sourceText.length === 0) {
-      state.outputEl.empty();
-      state.statusEl.setText("No source text to translate.");
-      return;
-    }
-    if (state.sourceText.length > this.settings.maxChars) {
-      state.statusEl.setText(
-        `Block too large (${state.sourceText.length} chars). Reduce size or increase max block size in settings.`
-      );
-      return;
-    }
+    if (!state || state.inFlight) return;
     state.inFlight = true;
     state.lastError = void 0;
-    state.statusEl.setText("Translating\u2026");
     const hash = this.computeHash(state);
-    const maxAttempts = this.settings.maxAttempts;
-    let attempt = 0;
-    let lastErrorMessage;
-    const { id: providerId, config } = this.getActiveProvider();
-    const model = config.models.length > 0 ? resolveModel(config.models, state.model) : config.selectedModel;
-    if (!model) {
-      state.inFlight = false;
-      state.statusEl.setText(`No model selected for ${PROVIDER_LABELS[providerId]}. Fetch models in settings.`);
-      return;
-    }
-    while (attempt < maxAttempts) {
-      attempt += 1;
-      state.retryCount = attempt;
-      try {
-        const result = await this.backend.translate(state.sourceText, state.sourceLang, state.targetLang, {
-          ...this.buildProviderRequest(providerId),
-          model,
-          prompt: state.prompt
-        });
-        state.outputEl.empty();
-        const pre = state.outputEl.createEl("pre", {
-          text: result.directTranslation,
-          cls: "translate-block-output-pre"
-        });
-        pre.setAttribute("contenteditable", "false");
-        state.lastSourceHash = hash;
-        state.retryCount = 0;
-        state.inFlight = false;
-        state.lastUpdatedAt = Date.now();
-        state.statusEl.setText("Translated successfully.");
-        return;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        lastErrorMessage = message;
-        const isSoftError = this.isSoftErrorMessage(message);
-        if (!isSoftError || attempt >= maxAttempts) {
-          break;
+    const result = await runTranslationJob(
+      this,
+      {
+        sourceText: state.sourceText,
+        sourceLang: state.sourceLang,
+        targetLang: state.targetLang,
+        model: state.model,
+        prompt: state.prompt
+      },
+      {
+        onStatus: (message) => state.statusEl.setText(message),
+        onResult: (translated) => {
+          state.outputEl.empty();
+          const pre = state.outputEl.createEl("pre", {
+            text: translated.directTranslation,
+            cls: "translate-block-output-pre"
+          });
+          pre.setAttribute("contenteditable", "false");
+          state.lastUpdatedAt = Date.now();
+          state.statusEl.setText("Translated successfully.");
+        },
+        onError: (message) => {
+          state.lastError = message;
+          state.statusEl.setText(message);
         }
-        await new Promise((resolve) => window.setTimeout(resolve, 300));
       }
-    }
-    state.inFlight = false;
-    state.lastError = lastErrorMessage;
-    state.lastSourceHash = hash;
-    state.statusEl.setText(
-      `Translation failed after ${Math.max(1, state.retryCount)} attempt(s). Last error: ${lastErrorMessage != null ? lastErrorMessage : "Unknown error"}`
     );
-    new import_obsidian4.Notice("Translate Block error. See block status for details.");
-  }
-  isSoftErrorMessage(message) {
-    const lower = message.toLowerCase();
-    if (lower.includes("timeout") || lower.includes("network")) return true;
-    if (lower.includes("502") || lower.includes("503") || lower.includes("504") || lower.includes("500"))
-      return true;
-    return false;
+    state.inFlight = false;
+    state.lastSourceHash = hash;
+    if (!result) {
+      new import_obsidian6.Notice("Translate Block error. See status for details.");
+    }
   }
 };
 /** Zero-width space used to escape fence-like lines so they do not close the code block. */
