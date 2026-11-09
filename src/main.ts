@@ -114,8 +114,9 @@ export default class TranslateBlockPlugin extends Plugin {
 	private selectionAnchor(evt?: MouseEvent | KeyboardEvent): PopoverAnchor {
 		const domSelection = activeWindow.getSelection();
 		if (domSelection && domSelection.rangeCount > 0) {
-			const rect = domSelection.getRangeAt(0).getBoundingClientRect();
-			if (rect.width > 0 || rect.height > 0) {
+			const range = domSelection.getRangeAt(0);
+			const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : undefined;
+			if (rect && (rect.width > 0 || rect.height > 0)) {
 				return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
 			}
 		}
