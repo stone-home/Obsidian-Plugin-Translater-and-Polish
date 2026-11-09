@@ -1,14 +1,32 @@
 import { requestUrl } from "obsidian";
-import { DEFAULT_SETTINGS } from "./settings";
+import { DEFAULT_PROMPT, DEFAULT_SETTINGS } from "./defaults";
+import {
+	ProviderId,
+	buildHeaders,
+	chatUrl,
+	mapModelsResponse,
+	modelsUrl,
+} from "./providers";
+import {
+	SECTION_MARKERS,
+	STRUCTURED_PROMPT_SUFFIX,
+	StructuredTranslation,
+	parseStructuredResponse,
+} from "./response-parser";
 
-export interface TranslationRequestOptions {
-	endpointUrl: string;
-	model: string;
-	timeoutMs: number;
-	prompt: string;
+export interface ProviderRequest {
+	provider: ProviderId;
+	baseUrl: string;
+	apiKey: string;
 	extraHeadersRaw: string;
+	timeoutMs: number;
 	/** When true, debug logs are printed to the console. */
 	debug?: boolean;
+}
+
+export interface TranslationRequest extends ProviderRequest {
+	model: string;
+	prompt: string;
 }
 
 export interface TranslationBackend {
@@ -16,145 +34,128 @@ export interface TranslationBackend {
 		text: string,
 		sourceLang: string,
 		targetLang: string,
-		options: TranslationRequestOptions,
-	): Promise<string>;
+		request: TranslationRequest,
+	): Promise<StructuredTranslation>;
+	listModels(request: ProviderRequest): Promise<string[]>;
 }
 
 export function createDefaultBackend(): TranslationBackend {
-	return new OllamaBackend();
+	return new HttpTranslationBackend();
 }
 
-function buildExtraHeaders(extraHeadersRaw: string): Record<string, string> {
-	const headers: Record<string, string> = {};
-
-	const lines = extraHeadersRaw.split("\n");
-	for (const rawLine of lines) {
-		const line = rawLine.trim();
-		if (!line) continue;
-		const idx = line.indexOf(":");
-		if (idx === -1) continue;
-		const key = line.slice(0, idx).trim();
-		const value = line.slice(idx + 1).trim();
-		if (!key || !value) continue;
-		headers[key] = value;
+/** Builds the system prompt: user template + structured-output suffix, placeholders substituted. */
+export function buildSystemPrompt(prompt: string, sourceLang: string, targetLang: string): string {
+	let template = (prompt || "").trim() || DEFAULT_PROMPT;
+	if (!template.toUpperCase().includes(SECTION_MARKERS.direct)) {
+		template = `${template}\n\n${STRUCTURED_PROMPT_SUFFIX}`;
 	}
-
-	return headers;
-}
-
-function buildPromptTemplate(prompt: string, sourceLang: string, targetLang: string): string {
-	let result = prompt || DEFAULT_SETTINGS.defaultPrompt;
 	const effectiveSource = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
 	const effectiveTarget = targetLang || DEFAULT_SETTINGS.defaultTargetLang;
-	result = result.replace(/{{sourceLang}}/g, effectiveSource);
-	result = result.replace(/{{targetLang}}/g, effectiveTarget);
-	return result;
+	return template.replace(/{{sourceLang}}/g, effectiveSource).replace(/{{targetLang}}/g, effectiveTarget);
 }
 
-function debugLog(options: TranslationRequestOptions, ...args: unknown[]): void {
-	if (options.debug) {
+/** Rejects with a "timeout" error when `promise` does not settle within `ms`. */
+export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+	if (!Number.isFinite(ms) || ms <= 0) return promise;
+	let timer: number | undefined;
+	const timeout = new Promise<never>((_, reject) => {
+		timer = window.setTimeout(() => reject(new Error(`Request timeout after ${ms} ms`)), ms);
+	});
+	return Promise.race([promise, timeout]).finally(() => {
+		if (timer !== undefined) window.clearTimeout(timer);
+	});
+}
+
+function debugLog(request: ProviderRequest, ...args: unknown[]): void {
+	if (request.debug) {
 		console.log("[translate-block]", ...args);
 	}
 }
 
-class OpenAICompatibleBackend implements TranslationBackend {
+function httpError(status: number, body: string): Error {
+	const snippet = (body || "").trim().slice(0, 300);
+	return new Error(`HTTP ${status}${snippet ? `: ${snippet}` : ""}`);
+}
+
+export class HttpTranslationBackend implements TranslationBackend {
 	async translate(
 		text: string,
 		sourceLang: string,
 		targetLang: string,
-		options: TranslationRequestOptions,
-	): Promise<string> {
-		const url = (options.endpointUrl || DEFAULT_SETTINGS.endpointUrl).replace(/\/$/, "");
+		request: TranslationRequest,
+	): Promise<StructuredTranslation> {
+		const url = chatUrl(request.provider, request.baseUrl);
+		const systemPrompt = buildSystemPrompt(request.prompt, sourceLang, targetLang);
+		const messages = [
+			{ role: "system", content: systemPrompt },
+			{ role: "user", content: text },
+		];
+		const body =
+			request.provider === "ollama"
+				? { model: request.model, messages, stream: false, options: { temperature: 0.2 } }
+				: { model: request.model, messages, temperature: 0.2 };
 
-		debugLog(options, "POST →", url);
+		debugLog(request, "POST →", url, "model:", request.model);
 
-		const systemPrompt = buildPromptTemplate(options.prompt, sourceLang, targetLang);
-		const payload = JSON.stringify({
-			model: options.model || DEFAULT_SETTINGS.defaultModel,
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: text },
-			],
-			temperature: 0.2,
-		});
+		const response = await withTimeout(
+			requestUrl({
+				url,
+				method: "POST",
+				contentType: "application/json",
+				body: JSON.stringify(body),
+				headers: buildHeaders(request.provider, request.apiKey, request.extraHeadersRaw),
+				throw: false,
+			}),
+			request.timeoutMs,
+		);
 
-		debugLog(options, "model:", options.model || DEFAULT_SETTINGS.defaultModel);
-
-		const response = await requestUrl({
-			url,
-			method: "POST",
-			contentType: "application/json",
-			body: payload,
-			headers: buildExtraHeaders(options.extraHeadersRaw),
-			throw: false,
-		});
-
-		debugLog(options, "Response status:", response.status);
+		debugLog(request, "Response status:", response.status);
 
 		if (response.status < 200 || response.status >= 300) {
-			throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
+			throw httpError(response.status, response.text);
 		}
 
-		const data = response.json as {
-			choices?: Array<{ message?: { content?: string } }>;
-		};
-
-		const content = data.choices?.[0]?.message?.content;
+		const content = extractContent(request.provider, response.json);
 		if (!content) {
 			console.error("[translate-block] Unexpected response shape:", response.text);
 			throw new Error("No content in translation response.");
 		}
+		const parsed = parseStructuredResponse(content);
+		debugLog(request, "Parsed sections:", {
+			direct: parsed.directTranslation.length,
+			native: parsed.nativePolish.length,
+			suggestions: parsed.suggestions.length,
+		});
+		return parsed;
+	}
 
-		return content.trim();
+	async listModels(request: ProviderRequest): Promise<string[]> {
+		const url = modelsUrl(request.provider, request.baseUrl);
+		debugLog(request, "GET →", url);
+		const response = await withTimeout(
+			requestUrl({
+				url,
+				method: "GET",
+				headers: buildHeaders(request.provider, request.apiKey, request.extraHeadersRaw),
+				throw: false,
+			}),
+			request.timeoutMs,
+		);
+		if (response.status < 200 || response.status >= 300) {
+			throw httpError(response.status, response.text);
+		}
+		return mapModelsResponse(request.provider, response.json);
 	}
 }
 
-class OllamaBackend implements TranslationBackend {
-	async translate(
-		text: string,
-		sourceLang: string,
-		targetLang: string,
-		options: TranslationRequestOptions,
-	): Promise<string> {
-		const url = (options.endpointUrl || DEFAULT_SETTINGS.endpointUrl).replace(/\/$/, "");
-
-		debugLog(options, "POST →", url);
-
-		const systemPrompt = buildPromptTemplate(options.prompt, sourceLang, targetLang);
-		const payload = JSON.stringify({
-			model: options.model || DEFAULT_SETTINGS.defaultModel,
-			messages: [
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: text },
-			],
-			stream: false,
-		});
-
-		const response = await requestUrl({
-			url,
-			method: "POST",
-			contentType: "application/json",
-			body: payload,
-			headers: buildExtraHeaders(options.extraHeadersRaw),
-			throw: false,
-		});
-
-		debugLog(options, "Response status:", response.status);
-
-		if (response.status < 200 || response.status >= 300) {
-			throw new Error(`HTTP ${response.status}: ${response.text || "Unknown error"}`);
-		}
-
-		const data = response.json as {
-			message?: { content?: string };
-		};
-
+function extractContent(provider: ProviderId, json: unknown): string | undefined {
+	if (!json || typeof json !== "object") return undefined;
+	if (provider === "ollama") {
+		const data = json as { message?: { content?: unknown } };
 		const content = data.message?.content;
-		if (!content) {
-			console.error("[translate-block] Unexpected response shape:", response.text);
-			throw new Error("No content in translation response.");
-		}
-
-		return content.trim();
+		return typeof content === "string" ? content.trim() : undefined;
 	}
+	const data = json as { choices?: Array<{ message?: { content?: unknown } }> };
+	const content = data.choices?.[0]?.message?.content;
+	return typeof content === "string" ? content.trim() : undefined;
 }

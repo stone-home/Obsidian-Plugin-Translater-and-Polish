@@ -2,7 +2,7 @@
 	"id": "obsidian-translate-block",
 	"name": "Obsidian Translate Block",
 	"version": "1.1.0",
-	"minAppVersion": "0.15.0",
+	"minAppVersion": "1.11.4",
 	"description": "Translate code blocks between languages using local or remote AI models.",
 	"author": "Stone",
 	"authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block/blob/trunk/README.md"

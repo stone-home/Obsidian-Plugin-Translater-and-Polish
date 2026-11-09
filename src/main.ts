@@ -1,13 +1,11 @@
 import { MarkdownPostProcessorContext, Notice, Plugin, WorkspaceLeaf } from "obsidian";
-import { parseModelList, populateModelSelect, resolveModel } from "./models";
+import { populateModelSelect, resolveModel } from "./models";
 import { resolveLanguage } from "./languages";
-import {
-	DEFAULT_SETTINGS,
-	MIN_POLL_INTERVAL_MS,
-	TranslateBlockSettingTab,
-	TranslateBlockSettings,
-} from "./settings";
-import { TranslationBackend, createDefaultBackend } from "./translation-backend";
+import { DEFAULT_SETTINGS, TranslateBlockSettingTab, TranslateBlockSettings } from "./settings";
+import { freshDefaultSettings } from "./defaults";
+import { PROVIDER_LABELS, ProviderConfig, ProviderId, secretId } from "./providers";
+import { migrateSettings } from "./settings-migration";
+import { ProviderRequest, TranslationBackend, createDefaultBackend } from "./translation-backend";
 import { TranslatePanelView, VIEW_TYPE_TRANSLATE_PANEL } from "./translate-panel-view";
 import {
 	TranslateWorkspaceHost,
@@ -16,7 +14,7 @@ import {
 } from "./translate-workspace";
 
 export default class TranslateBlockPlugin extends Plugin {
-	settings: TranslateBlockSettings = DEFAULT_SETTINGS;
+	settings: TranslateBlockSettings = freshDefaultSettings();
 	private workspaceStates = new Map<string, TranslateWorkspaceState>();
 	private backend: TranslationBackend | undefined;
 	private pollIntervalId: number | undefined;
@@ -61,7 +59,7 @@ export default class TranslateBlockPlugin extends Plugin {
 			getModelList: () => this.getModelList(),
 			defaultSourceLang: this.settings.defaultSourceLang,
 			defaultTargetLang: this.settings.defaultTargetLang,
-			defaultModel: this.settings.defaultModel,
+			defaultModel: this.getActiveProvider().config.selectedModel,
 			isValidLang: (value) => this.isValidLang(value),
 			registerWorkspace: (state) => this.registerWorkspace(state),
 			triggerManualTranslate: (id) => this.triggerManualTranslate(id),
@@ -69,7 +67,56 @@ export default class TranslateBlockPlugin extends Plugin {
 	}
 
 	getModelList(): string[] {
-		return parseModelList(this.settings.modelsRaw, this.settings.defaultModel);
+		return [...this.getActiveProvider().config.models];
+	}
+
+	getActiveProvider(): { id: ProviderId; config: ProviderConfig } {
+		const id = this.settings.activeProvider;
+		return { id, config: this.settings.providers[id] };
+	}
+
+	getApiKey(id: ProviderId): string {
+		return this.app.secretStorage.getSecret(secretId(id)) ?? "";
+	}
+
+	setApiKey(id: ProviderId, value: string): void {
+		try {
+			this.app.secretStorage.setSecret(secretId(id), value);
+		} catch (error) {
+			new Notice(
+				`Translate Block: could not store ${PROVIDER_LABELS[id]} API key. ` +
+					(error instanceof Error ? error.message : String(error)),
+			);
+		}
+	}
+
+	/** Request fields shared by translate and list-models calls for a provider. */
+	buildProviderRequest(id: ProviderId): ProviderRequest {
+		const config = this.settings.providers[id];
+		return {
+			provider: id,
+			baseUrl: config.baseUrl,
+			apiKey: this.getApiKey(id),
+			extraHeadersRaw: config.extraHeadersRaw,
+			timeoutMs: this.settings.timeoutMs,
+			debug: this.settings.debug,
+		};
+	}
+
+	/** Fetches the provider's model list, stores it, and returns it. Throws on failure. */
+	async fetchModels(id: ProviderId): Promise<string[]> {
+		if (!this.backend) {
+			this.backend = createDefaultBackend();
+		}
+		const models = await this.backend.listModels(this.buildProviderRequest(id));
+		const config = this.settings.providers[id];
+		config.models = models;
+		config.selectedModel = models.length > 0 ? resolveModel(models, config.selectedModel) : config.selectedModel;
+		await this.saveSettings();
+		if (id === this.settings.activeProvider) {
+			this.refreshWorkspaceModelOptions();
+		}
+		return models;
 	}
 
 	registerWorkspace(incoming: TranslateWorkspaceState): void {
@@ -114,39 +161,21 @@ export default class TranslateBlockPlugin extends Plugin {
 	}
 
 	private async loadSettings() {
-		const data = (await this.loadData()) as Partial<TranslateBlockSettings> | null;
-		const merged: TranslateBlockSettings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
-		if (!merged.pollIntervalMs || merged.pollIntervalMs < MIN_POLL_INTERVAL_MS) {
-			merged.pollIntervalMs = Math.max(
-				MIN_POLL_INTERVAL_MS,
-				merged.pollIntervalMs || DEFAULT_SETTINGS.pollIntervalMs,
-			);
+		const { settings, legacyApiKey, migrated } = migrateSettings(await this.loadData());
+		this.settings = settings;
+		if (legacyApiKey) {
+			this.setApiKey("ollama", legacyApiKey);
 		}
-		if (!merged.modelsRaw?.trim()) {
-			merged.modelsRaw = merged.defaultModel?.trim() || DEFAULT_SETTINGS.modelsRaw;
+		if (migrated) {
+			await this.saveData(this.settings);
 		}
-		const list = parseModelList(merged.modelsRaw, merged.defaultModel);
-		merged.defaultModel = resolveModel(list, merged.defaultModel);
-		merged.defaultSourceLang = resolveLanguage(
-			merged.defaultSourceLang,
-			DEFAULT_SETTINGS.defaultSourceLang,
-		);
-		merged.defaultTargetLang = resolveLanguage(
-			merged.defaultTargetLang,
-			DEFAULT_SETTINGS.defaultTargetLang,
-		);
-		this.settings = merged;
 	}
 
 	async saveSettings() {
-		if (!this.settings.pollIntervalMs || this.settings.pollIntervalMs < MIN_POLL_INTERVAL_MS) {
-			this.settings.pollIntervalMs = Math.max(
-				MIN_POLL_INTERVAL_MS,
-				this.settings.pollIntervalMs || DEFAULT_SETTINGS.pollIntervalMs,
-			);
+		const { config } = this.getActiveProvider();
+		if (config.models.length > 0) {
+			config.selectedModel = resolveModel(config.models, config.selectedModel);
 		}
-		const list = parseModelList(this.settings.modelsRaw, this.settings.defaultModel);
-		this.settings.defaultModel = resolveModel(list, this.settings.defaultModel);
 		this.settings.defaultSourceLang = resolveLanguage(
 			this.settings.defaultSourceLang,
 			DEFAULT_SETTINGS.defaultSourceLang,
@@ -159,11 +188,9 @@ export default class TranslateBlockPlugin extends Plugin {
 	}
 
 	private startPolling() {
-		const interval = this.settings.pollIntervalMs || DEFAULT_SETTINGS.pollIntervalMs;
-		const effectiveInterval = Math.max(MIN_POLL_INTERVAL_MS, interval);
 		this.pollIntervalId = window.setInterval(() => {
 			void this.pollWorkspaces();
-		}, effectiveInterval);
+		}, 1000);
 		this.registerInterval(this.pollIntervalId);
 	}
 
@@ -200,7 +227,7 @@ export default class TranslateBlockPlugin extends Plugin {
 			initialSourceText: decodedSource,
 			initialSourceLang: fenceConfig.sourceLang || this.settings.defaultSourceLang,
 			initialTargetLang: fenceConfig.targetLang || this.settings.defaultTargetLang,
-			initialModel: resolveModel(models, fenceConfig.model || this.settings.defaultModel),
+			initialModel: resolveModel(models, fenceConfig.model || this.getActiveProvider().config.selectedModel),
 			prompt: fenceConfig.prompt?.trim() || this.settings.defaultPrompt,
 			onSaveToBlock,
 		});
@@ -408,29 +435,27 @@ export default class TranslateBlockPlugin extends Plugin {
 		let attempt = 0;
 		let lastErrorMessage: string | undefined;
 
-		const model = resolveModel(this.getModelList(), state.model);
+		const { id: providerId, config } = this.getActiveProvider();
+		const model = config.models.length > 0 ? resolveModel(config.models, state.model) : config.selectedModel;
+		if (!model) {
+			state.inFlight = false;
+			state.statusEl.setText(`No model selected for ${PROVIDER_LABELS[providerId]}. Fetch models in settings.`);
+			return;
+		}
 
 		while (attempt < maxAttempts) {
 			attempt += 1;
 			state.retryCount = attempt;
 			try {
-				const translated = await this.backend.translate(
-					state.sourceText,
-					state.sourceLang,
-					state.targetLang,
-					{
-						endpointUrl: this.settings.endpointUrl,
-						model,
-						timeoutMs: this.settings.timeoutMs,
-						prompt: state.prompt,
-						extraHeadersRaw: this.settings.extraHeadersRaw,
-						debug: this.settings.debug,
-					},
-				);
+				const result = await this.backend.translate(state.sourceText, state.sourceLang, state.targetLang, {
+					...this.buildProviderRequest(providerId),
+					model,
+					prompt: state.prompt,
+				});
 
 				state.outputEl.empty();
 				const pre = state.outputEl.createEl("pre", {
-					text: translated,
+					text: result.directTranslation,
 					cls: "translate-block-output-pre",
 				});
 				pre.setAttribute("contenteditable", "false");

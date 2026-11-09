@@ -36,7 +36,7 @@ export class TranslatePanelView extends ItemView {
 			initialSourceText: "",
 			initialSourceLang: this.plugin.settings.defaultSourceLang,
 			initialTargetLang: this.plugin.settings.defaultTargetLang,
-			initialModel: this.plugin.settings.defaultModel,
+			initialModel: this.plugin.getActiveProvider().config.selectedModel,
 			prompt: this.plugin.settings.defaultPrompt,
 			containerClass: "translate-panel-container",
 		});
