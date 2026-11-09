@@ -2,7 +2,7 @@ import { Editor, Menu, Notice, Plugin } from "obsidian";
 import { freshDefaultSettings } from "./defaults";
 import { resolveLanguage } from "./languages";
 import { resolveModel } from "./models";
-import { PROVIDER_LABELS, ProviderConfig, ProviderId, secretId } from "./providers";
+import { PROVIDER_LABELS, ProviderConfig, ProviderId, providerUsesApiKey, secretId } from "./providers";
 import { PopoverAnchor, QuickTranslatePopover } from "./quick-translate-popover";
 import { DEFAULT_SETTINGS, TranslateBlockSettingTab, TranslateBlockSettings } from "./settings";
 import { migrateSettings } from "./settings-migration";
@@ -13,6 +13,7 @@ import { runTranslationJob } from "./translation-job";
 export default class TranslateBlockPlugin extends Plugin {
 	settings: TranslateBlockSettings = freshDefaultSettings();
 	private backend: TranslationBackend | undefined;
+	private readonly openModals = new Set<TranslateModal>();
 
 	async onload() {
 		await this.loadSettings();
@@ -24,6 +25,16 @@ export default class TranslateBlockPlugin extends Plugin {
 
 	onunload() {
 		QuickTranslatePopover.closeCurrent();
+		for (const modal of Array.from(this.openModals)) {
+			modal.close();
+		}
+		this.openModals.clear();
+	}
+
+	/** Modals register here so they can be closed when the plugin unloads. */
+	trackModal(modal: TranslateModal, open: boolean): void {
+		if (open) this.openModals.add(modal);
+		else this.openModals.delete(modal);
 	}
 
 	// ---------------------------------------------------------------- entry points
@@ -183,7 +194,7 @@ export default class TranslateBlockPlugin extends Plugin {
 		return {
 			provider: id,
 			baseUrl: config.baseUrl,
-			apiKey: this.getApiKey(id),
+			apiKey: providerUsesApiKey(id) ? this.getApiKey(id) : "",
 			extraHeadersRaw: config.extraHeadersRaw,
 			timeoutMs: this.settings.timeoutMs,
 			debug: this.settings.debug,
@@ -195,9 +206,7 @@ export default class TranslateBlockPlugin extends Plugin {
 		const models = await this.getBackend().listModels(this.buildProviderRequest(id));
 		const config = this.settings.providers[id];
 		config.models = models;
-		if (models.length > 0) {
-			config.selectedModel = resolveModel(models, config.selectedModel);
-		}
+		config.selectedModel = models.length > 0 ? resolveModel(models, config.selectedModel) : "";
 		await this.saveSettings();
 		return models;
 	}

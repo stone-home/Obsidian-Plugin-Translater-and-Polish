@@ -267,6 +267,7 @@ var import_obsidian = require("obsidian");
 function isSoftErrorMessage(message) {
   const lower = message.toLowerCase();
   if (lower.includes("timeout") || lower.includes("network")) return true;
+  if (/net::|err_|econn|etimedout|fetch failed|socket hang up/.test(lower)) return true;
   return /\b50[0234]\b/.test(lower);
 }
 var RETRY_DELAY_MS = 300;
@@ -353,6 +354,7 @@ var TranslateModal = class extends import_obsidian.Modal {
     return Math.max(100, this.plugin.settings.liveDelayMs);
   }
   onOpen() {
+    this.plugin.trackModal(this, true);
     this.setTitle("Translate & polish");
     this.modalEl.addClass("translate-modal");
     const { contentEl } = this;
@@ -376,6 +378,7 @@ var TranslateModal = class extends import_obsidian.Modal {
     }
   }
   onClose() {
+    this.plugin.trackModal(this, false);
     this.seq += 1;
     this.scheduleRun.cancel();
     this.contentEl.empty();
@@ -571,18 +574,30 @@ var TranslateModal = class extends import_obsidian.Modal {
     return this.chosen === "native" && this.result.nativePolish ? this.result.nativePolish : this.result.directTranslation;
   }
   applyToEditor(mode) {
-    var _a;
     const text = this.chosenText();
     if (!text || !this.editor) return;
     const editor = this.editor;
     const payload = mode === "callout" ? buildCallout(text, this.targetLang) : text;
+    try {
+      this.writeBack(editor, payload, mode);
+    } catch (error) {
+      new import_obsidian.Notice(
+        "Could not write into the note (was it closed?). Use Copy instead. " + (error instanceof Error ? error.message : String(error))
+      );
+      return;
+    }
+    this.close();
+  }
+  writeBack(editor, payload, mode) {
+    var _a;
     if (this.hasSelection && this.from && this.to) {
       const unchanged = editor.getRange(this.from, this.to) === this.initialText;
       if (!unchanged) {
         editor.replaceRange(payload, editor.getCursor());
         new import_obsidian.Notice("Selection changed while translating; inserted at the cursor instead.");
       } else if (mode === "callout") {
-        const lineEnd = { line: this.to.line, ch: editor.getLine(this.to.line).length };
+        const lastLine = this.to.ch === 0 && this.to.line > this.from.line ? this.to.line - 1 : this.to.line;
+        const lineEnd = { line: lastLine, ch: editor.getLine(lastLine).length };
         editor.replaceRange(`
 ${payload}`, lineEnd);
       } else {
@@ -595,7 +610,6 @@ ${payload}
 ` : payload;
       editor.replaceRange(insertion, at);
     }
-    this.close();
   }
 };
 
@@ -808,9 +822,9 @@ var TranslateBlockSettingTab = class extends import_obsidian3.PluginSettingTab {
       new import_obsidian3.Setting(containerEl).setName("API key").setDesc("Stored in Obsidian's secret storage, not in the plugin data file.").addText((text) => {
         text.inputEl.type = "password";
         text.inputEl.autocomplete = "off";
-        text.setPlaceholder("sk-\u2026").setValue(this.plugin.getApiKey(id)).onChange((value) => {
-          this.plugin.setApiKey(id, value.trim());
-        });
+        const save = (0, import_obsidian3.debounce)((value) => this.plugin.setApiKey(id, value.trim()), 400, true);
+        text.setPlaceholder("sk-\u2026").setValue(this.plugin.getApiKey(id)).onChange((value) => save(value));
+        text.inputEl.addEventListener("blur", () => save.run());
       });
     }
     let modelDropdown;
@@ -965,7 +979,7 @@ function applyCommonFields(target, raw) {
 function migrateSettings(data) {
   const raw = asObject(data);
   const settings = freshDefaultSettings();
-  if (raw.settingsVersion === SETTINGS_VERSION) {
+  if (typeof raw.settingsVersion === "number" && raw.settingsVersion >= SETTINGS_VERSION) {
     applyCommonFields(settings, raw);
     settings.activeProvider = isProviderId(raw.activeProvider) ? raw.activeProvider : settings.activeProvider;
     const providers = asObject(raw.providers);
@@ -1014,7 +1028,12 @@ var STRUCTURED_PROMPT_SUFFIX = [
   SECTION_MARKERS.suggestions,
   'At most five short bullet points about grammar, word choice or style in the source text. Write "- none" if there is nothing to note.'
 ].join("\n");
-var HEADING_RE = /^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+POLISH)?|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*:?[ \t]*$/i;
+var HEADING_RE = /^[ \t]*(#{1,6}[ \t]*)?(\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+POLISH)?|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*(:)?[ \t]*$/i;
+function matchHeading(line) {
+  const m = HEADING_RE.exec(line);
+  if (!m) return null;
+  return m[1] || m[2] || m[4] ? m[3] : null;
+}
 function keyFor(label) {
   const upper = label.toUpperCase();
   if (upper.startsWith("DIRECT")) return "direct";
@@ -1047,9 +1066,9 @@ function parseStructuredResponse(rawInput) {
   const preamble = [];
   let current = null;
   for (const line of lines) {
-    const match = HEADING_RE.exec(line);
-    if (match) {
-      current = keyFor(match[1]);
+    const label = matchHeading(line);
+    if (label) {
+      current = keyFor(label);
       seen[current] = true;
       continue;
     }
@@ -1086,7 +1105,8 @@ function buildSystemPrompt(prompt, sourceLang, targetLang) {
 
 ${STRUCTURED_PROMPT_SUFFIX}`;
   }
-  const effectiveSource = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
+  const source = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
+  const effectiveSource = source === "auto" ? "the detected language" : source;
   const effectiveTarget = targetLang || DEFAULT_SETTINGS.defaultTargetLang;
   return template.replace(/{{sourceLang}}/g, effectiveSource).replace(/{{targetLang}}/g, effectiveTarget);
 }
@@ -1096,6 +1116,7 @@ function withTimeout(promise, ms) {
   const timeout = new Promise((_, reject) => {
     timer = window.setTimeout(() => reject(new Error(`Request timeout after ${ms} ms`)), ms);
   });
+  promise.catch(() => void 0);
   return Promise.race([promise, timeout]).finally(() => {
     if (timer !== void 0) window.clearTimeout(timer);
   });
@@ -1103,6 +1124,13 @@ function withTimeout(promise, ms) {
 function debugLog(request, ...args) {
   if (request.debug) {
     console.log("[translate-block]", ...args);
+  }
+}
+function parseJsonBody(response) {
+  try {
+    return response.json;
+  } catch (e) {
+    throw new Error(`HTTP ${response.status}: response was not JSON (${(response.text || "").trim().slice(0, 120)})`);
   }
 }
 function httpError(status, body) {
@@ -1134,7 +1162,7 @@ var HttpTranslationBackend = class {
     if (response.status < 200 || response.status >= 300) {
       throw httpError(response.status, response.text);
     }
-    const content = extractContent(request.provider, response.json);
+    const content = extractContent(request.provider, parseJsonBody(response));
     if (!content) {
       console.error("[translate-block] Unexpected response shape:", response.text);
       throw new Error("No content in translation response.");
@@ -1162,7 +1190,7 @@ var HttpTranslationBackend = class {
     if (response.status < 200 || response.status >= 300) {
       throw httpError(response.status, response.text);
     }
-    return mapModelsResponse(request.provider, response.json);
+    return mapModelsResponse(request.provider, parseJsonBody(response));
   }
 };
 function extractContent(provider, json) {
@@ -1183,6 +1211,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.settings = freshDefaultSettings();
+    this.openModals = /* @__PURE__ */ new Set();
   }
   async onload() {
     await this.loadSettings();
@@ -1192,6 +1221,15 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
   }
   onunload() {
     QuickTranslatePopover.closeCurrent();
+    for (const modal of Array.from(this.openModals)) {
+      modal.close();
+    }
+    this.openModals.clear();
+  }
+  /** Modals register here so they can be closed when the plugin unloads. */
+  trackModal(modal, open) {
+    if (open) this.openModals.add(modal);
+    else this.openModals.delete(modal);
   }
   // ---------------------------------------------------------------- entry points
   registerSelectionCommands() {
@@ -1330,7 +1368,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
     return {
       provider: id,
       baseUrl: config.baseUrl,
-      apiKey: this.getApiKey(id),
+      apiKey: providerUsesApiKey(id) ? this.getApiKey(id) : "",
       extraHeadersRaw: config.extraHeadersRaw,
       timeoutMs: this.settings.timeoutMs,
       debug: this.settings.debug
@@ -1341,9 +1379,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
     const models = await this.getBackend().listModels(this.buildProviderRequest(id));
     const config = this.settings.providers[id];
     config.models = models;
-    if (models.length > 0) {
-      config.selectedModel = resolveModel(models, config.selectedModel);
-    }
+    config.selectedModel = models.length > 0 ? resolveModel(models, config.selectedModel) : "";
     await this.saveSettings();
     return models;
   }

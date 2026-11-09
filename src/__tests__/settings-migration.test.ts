@@ -86,3 +86,16 @@ describe("helpers", () => {
 		expect(legacyEndpointToBaseUrl("http://host:3000")).toBe("http://host:3000");
 	});
 });
+
+describe("forward compatibility", () => {
+	it("treats a newer settingsVersion as current instead of re-migrating", () => {
+		const { settings, migrated } = migrateSettings({
+			settingsVersion: SETTINGS_VERSION + 1,
+			activeProvider: "openwebui",
+			providers: { openwebui: { baseUrl: "http://x:8080", models: ["m"], selectedModel: "m" } },
+		});
+		expect(migrated).toBe(false);
+		expect(settings.activeProvider).toBe("openwebui");
+		expect(settings.providers.openwebui.baseUrl).toBe("http://x:8080");
+	});
+});

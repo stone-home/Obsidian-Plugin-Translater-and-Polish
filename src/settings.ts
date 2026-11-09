@@ -1,4 +1,4 @@
-import { App, ButtonComponent, DropdownComponent, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, ButtonComponent, DropdownComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
 import TranslateBlockPlugin from "./main";
 import { DEFAULT_SETTINGS, TranslateBlockSettings } from "./defaults";
 import { LANGUAGE_OPTIONS, resolveLanguage } from "./languages";
@@ -94,11 +94,11 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 				.addText((text) => {
 					text.inputEl.type = "password";
 					text.inputEl.autocomplete = "off";
+					const save = debounce((value: string) => this.plugin.setApiKey(id, value.trim()), 400, true);
 					text.setPlaceholder("sk-…")
 						.setValue(this.plugin.getApiKey(id))
-						.onChange((value) => {
-							this.plugin.setApiKey(id, value.trim());
-						});
+						.onChange((value) => save(value));
+					text.inputEl.addEventListener("blur", () => save.run());
 				});
 		}
 

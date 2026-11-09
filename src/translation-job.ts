@@ -27,6 +27,7 @@ export interface StaleSignal {
 export function isSoftErrorMessage(message: string): boolean {
 	const lower = message.toLowerCase();
 	if (lower.includes("timeout") || lower.includes("network")) return true;
+	if (/net::|err_|econn|etimedout|fetch failed|socket hang up/.test(lower)) return true;
 	return /\b50[0234]\b/.test(lower);
 }
 

@@ -74,3 +74,11 @@ describe("parseSuggestionList", () => {
 		]);
 	});
 });
+
+describe("heading detection", () => {
+	it("ignores a bare label line inside a section", () => {
+		const result = parseStructuredResponse("### DIRECT\nDirect\nNative\n### NATIVE\nOk.");
+		expect(result.directTranslation).toBe("Direct\nNative");
+		expect(result.nativePolish).toBe("Ok.");
+	});
+});

@@ -80,6 +80,7 @@ export class TranslateModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.plugin.trackModal(this, true);
 		this.setTitle("Translate & polish");
 		this.modalEl.addClass("translate-modal");
 		const { contentEl } = this;
@@ -109,6 +110,7 @@ export class TranslateModal extends Modal {
 	}
 
 	onClose(): void {
+		this.plugin.trackModal(this, false);
 		this.seq += 1;
 		this.scheduleRun.cancel();
 		this.contentEl.empty();
@@ -339,13 +341,29 @@ export class TranslateModal extends Modal {
 		const editor = this.editor;
 		const payload = mode === "callout" ? buildCallout(text, this.targetLang) : text;
 
+		try {
+			this.writeBack(editor, payload, mode);
+		} catch (error) {
+			new Notice(
+				"Could not write into the note (was it closed?). Use Copy instead. " +
+					(error instanceof Error ? error.message : String(error)),
+			);
+			return;
+		}
+		this.close();
+	}
+
+	private writeBack(editor: Editor, payload: string, mode: "plain" | "callout"): void {
 		if (this.hasSelection && this.from && this.to) {
 			const unchanged = editor.getRange(this.from, this.to) === this.initialText;
 			if (!unchanged) {
 				editor.replaceRange(payload, editor.getCursor());
 				new Notice("Selection changed while translating; inserted at the cursor instead.");
 			} else if (mode === "callout") {
-				const lineEnd: EditorPosition = { line: this.to.line, ch: editor.getLine(this.to.line).length };
+				// A selection ending at column 0 stops at the previous line's end.
+				const lastLine =
+					this.to.ch === 0 && this.to.line > this.from.line ? this.to.line - 1 : this.to.line;
+				const lineEnd: EditorPosition = { line: lastLine, ch: editor.getLine(lastLine).length };
 				editor.replaceRange(`\n${payload}`, lineEnd);
 			} else {
 				editor.replaceRange(payload, this.from, this.to);
@@ -355,6 +373,5 @@ export class TranslateModal extends Modal {
 			const insertion = mode === "callout" ? `\n${payload}\n` : payload;
 			editor.replaceRange(insertion, at);
 		}
-		this.close();
 	}
 }

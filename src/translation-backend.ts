@@ -49,7 +49,8 @@ export function buildSystemPrompt(prompt: string, sourceLang: string, targetLang
 	if (!template.toUpperCase().includes(SECTION_MARKERS.direct)) {
 		template = `${template}\n\n${STRUCTURED_PROMPT_SUFFIX}`;
 	}
-	const effectiveSource = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
+	const source = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
+	const effectiveSource = source === "auto" ? "the detected language" : source;
 	const effectiveTarget = targetLang || DEFAULT_SETTINGS.defaultTargetLang;
 	return template.replace(/{{sourceLang}}/g, effectiveSource).replace(/{{targetLang}}/g, effectiveTarget);
 }
@@ -61,6 +62,8 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 	const timeout = new Promise<never>((_, reject) => {
 		timer = window.setTimeout(() => reject(new Error(`Request timeout after ${ms} ms`)), ms);
 	});
+	// Once the timeout wins, nobody awaits the original promise; keep its rejection from surfacing.
+	promise.catch(() => undefined);
 	return Promise.race([promise, timeout]).finally(() => {
 		if (timer !== undefined) window.clearTimeout(timer);
 	});
@@ -69,6 +72,15 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 function debugLog(request: ProviderRequest, ...args: unknown[]): void {
 	if (request.debug) {
 		console.log("[translate-block]", ...args);
+	}
+}
+
+/** `response.json` parses lazily and throws on non-JSON bodies (e.g. a proxy's HTML page). */
+function parseJsonBody(response: { status: number; text: string; json: unknown }): unknown {
+	try {
+		return response.json;
+	} catch {
+		throw new Error(`HTTP ${response.status}: response was not JSON (${(response.text || "").trim().slice(0, 120)})`);
 	}
 }
 
@@ -115,7 +127,7 @@ export class HttpTranslationBackend implements TranslationBackend {
 			throw httpError(response.status, response.text);
 		}
 
-		const content = extractContent(request.provider, response.json);
+		const content = extractContent(request.provider, parseJsonBody(response));
 		if (!content) {
 			console.error("[translate-block] Unexpected response shape:", response.text);
 			throw new Error("No content in translation response.");
@@ -144,7 +156,7 @@ export class HttpTranslationBackend implements TranslationBackend {
 		if (response.status < 200 || response.status >= 300) {
 			throw httpError(response.status, response.text);
 		}
-		return mapModelsResponse(request.provider, response.json);
+		return mapModelsResponse(request.provider, parseJsonBody(response));
 	}
 }
 

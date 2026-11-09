@@ -107,7 +107,7 @@ export function migrateSettings(data: unknown): MigrationResult {
 	const raw = asObject(data);
 	const settings = freshDefaultSettings();
 
-	if (raw.settingsVersion === SETTINGS_VERSION) {
+	if (typeof raw.settingsVersion === "number" && raw.settingsVersion >= SETTINGS_VERSION) {
 		applyCommonFields(settings, raw);
 		settings.activeProvider = isProviderId(raw.activeProvider) ? raw.activeProvider : settings.activeProvider;
 		const providers = asObject(raw.providers);

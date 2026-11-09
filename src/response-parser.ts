@@ -35,8 +35,19 @@ export const STRUCTURED_PROMPT_SUFFIX = [
 
 type SectionKey = "direct" | "native" | "suggestions";
 
+/**
+ * A section heading is the label alone on a line, wrapped in at least one of:
+ * leading `#`s, `**bold**`, or a trailing colon. A bare "Direct" line in the
+ * translation itself is left alone.
+ */
 const HEADING_RE =
-	/^[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+POLISH)?|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*:?[ \t]*$/i;
+	/^[ \t]*(#{1,6}[ \t]*)?(\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+POLISH)?|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*(:)?[ \t]*$/i;
+
+function matchHeading(line: string): string | null {
+	const m = HEADING_RE.exec(line);
+	if (!m) return null;
+	return m[1] || m[2] || m[4] ? m[3] : null;
+}
 
 function keyFor(label: string): SectionKey {
 	const upper = label.toUpperCase();
@@ -76,9 +87,9 @@ export function parseStructuredResponse(rawInput: string): StructuredTranslation
 	let current: SectionKey | null = null;
 
 	for (const line of lines) {
-		const match = HEADING_RE.exec(line);
-		if (match) {
-			current = keyFor(match[1]);
+		const label = matchHeading(line);
+		if (label) {
+			current = keyFor(label);
 			seen[current] = true;
 			continue;
 		}
