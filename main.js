@@ -25,7 +25,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => TranslateBlockPlugin
+  default: () => TranslatePolishPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian5 = require("obsidian");
@@ -94,7 +94,7 @@ function modelsUrl(id, baseUrl) {
   }
 }
 function secretId(id) {
-  return `translate-block-${id}-api-key`;
+  return `translate-polish-${id}-api-key`;
 }
 function parseHeaderLines(raw) {
   const headers = {};
@@ -111,7 +111,7 @@ function parseHeaderLines(raw) {
   return headers;
 }
 var OPENROUTER_REFERER = "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block";
-var OPENROUTER_TITLE = "Obsidian Translate Block";
+var OPENROUTER_TITLE = "Translate and Polish";
 function buildHeaders(id, apiKey, extraHeadersRaw) {
   const headers = {};
   const key = (apiKey || "").trim();
@@ -394,7 +394,7 @@ function withTimeout(promise, ms) {
 }
 function debugLog(request, ...args) {
   if (request.debug) {
-    console.log("[translate-block]", ...args);
+    console.log("[translate-polish]", ...args);
   }
 }
 function parseJsonBody(response) {
@@ -588,7 +588,7 @@ var TranslateModal = class extends import_obsidian2.Modal {
   }
   onOpen() {
     this.plugin.trackModal(this, true);
-    this.setTitle("Translate & polish");
+    this.setTitle("Translate and polish");
     this.modalEl.addClass("translate-modal");
     this.applySavedSize();
     this.watchSize();
@@ -1107,7 +1107,7 @@ var TASK_DESCRIPTIONS = {
   translate: "Model that translates the text. Dedicated translation models (e.g. translategemma) work well here.",
   rewrite: "Model that rewrites your text as a native speaker and explains the changes. Needs a general instruction-following model."
 };
-var TranslateBlockSettingTab = class extends import_obsidian4.PluginSettingTab {
+var TranslatePolishSettingTab = class extends import_obsidian4.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.taskSelects = {};
@@ -1420,7 +1420,7 @@ function migrateSettings(data) {
 }
 
 // src/main.ts
-var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
+var TranslatePolishPlugin = class extends import_obsidian5.Plugin {
   constructor() {
     super(...arguments);
     this.settings = freshDefaultSettings();
@@ -1429,7 +1429,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
   async onload() {
     await this.loadSettings();
     this.backend = createDefaultBackend();
-    this.addSettingTab(new TranslateBlockSettingTab(this.app, this));
+    this.addSettingTab(new TranslatePolishSettingTab(this.app, this));
     this.registerSelectionCommands();
   }
   onunload() {
@@ -1450,10 +1450,10 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
       this.app.workspace.on("editor-menu", (menu, editor) => {
         if (!editor.somethingSelected()) return;
         menu.addItem(
-          (item) => item.setTitle("Quick translate").setIcon("languages").setSection("translate-block").onClick((evt) => this.openQuickTranslate(editor, evt))
+          (item) => item.setTitle("Quick translate").setIcon("languages").setSection("translate-polish").onClick((evt) => this.openQuickTranslate(editor, evt))
         );
         menu.addItem(
-          (item) => item.setTitle("Translate & polish\u2026").setIcon("languages").setSection("translate-block").onClick(() => this.openTranslateModal(editor))
+          (item) => item.setTitle("Translate and polish\u2026").setIcon("languages").setSection("translate-polish").onClick(() => this.openTranslateModal(editor))
         );
       })
     );
@@ -1467,8 +1467,8 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
       }
     });
     this.addCommand({
-      id: "translate-polish-selection",
-      name: "Translate & polish selection",
+      id: "polish-selection",
+      name: "Open window for selection",
       editorCheckCallback: (checking, editor) => {
         if (!editor.somethingSelected()) return false;
         if (!checking) this.openTranslateModal(editor);
@@ -1567,7 +1567,7 @@ var TranslateBlockPlugin = class extends import_obsidian5.Plugin {
       this.app.secretStorage.setSecret(secretId(id), value);
     } catch (error) {
       new import_obsidian5.Notice(
-        `Translate Block: could not store ${PROVIDER_LABELS[id]} API key. ` + (error instanceof Error ? error.message : String(error))
+        `Translate and Polish: could not store ${PROVIDER_LABELS[id]} API key. ` + (error instanceof Error ? error.message : String(error))
       );
     }
   }

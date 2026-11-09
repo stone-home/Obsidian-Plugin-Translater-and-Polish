@@ -1,5 +1,5 @@
 import { App, Editor } from "obsidian";
-import TranslateBlockPlugin from "../src/main";
+import TranslatePolishPlugin from "../src/main";
 import { RewriteResult } from "../src/response-parser";
 
 export const TRANSLATION_REPLY = "Direct text.";
@@ -9,9 +9,9 @@ export function rewrite(partial: Partial<RewriteResult> = {}): RewriteResult {
 	return { nativeRewrite: "Native text.", suggestions: ["tighten it"], raw: REWRITE_REPLY, ...partial };
 }
 
-export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> {
+export async function makePlugin(seed?: unknown): Promise<TranslatePolishPlugin> {
 	const app = new App();
-	const plugin = new TranslateBlockPlugin(app, { id: "translate-block" } as any);
+	const plugin = new TranslatePolishPlugin(app, { id: "translate-polish" } as any);
 	if (seed !== undefined) (plugin as any).seedData(seed);
 	await plugin.onload();
 	return plugin;
@@ -23,7 +23,7 @@ export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> 
  * always carries the ### NATIVE marker.
  */
 export function mockBackend(
-	plugin: TranslateBlockPlugin,
+	plugin: TranslatePolishPlugin,
 	translation: string | Error = TRANSLATION_REPLY,
 	rewriteReply: string | Error = REWRITE_REPLY,
 ): jest.SpyInstance {

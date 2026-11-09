@@ -1,5 +1,5 @@
 import { App, ButtonComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
-import TranslateBlockPlugin from "./main";
+import TranslatePolishPlugin from "./main";
 import { DEFAULT_SETTINGS, TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
 import { LANGUAGE_OPTIONS, resolveLanguage } from "./languages";
 import { decodeBinding, fillTaskModelSelect } from "./model-picker";
@@ -13,7 +13,7 @@ import {
 	providerUsesApiKey,
 } from "./providers";
 
-export type { TranslateBlockSettings } from "./defaults";
+export type { TranslatePolishSettings } from "./defaults";
 export { DEFAULT_SETTINGS } from "./defaults";
 
 const TASK_DESCRIPTIONS: Record<TaskId, string> = {
@@ -21,12 +21,12 @@ const TASK_DESCRIPTIONS: Record<TaskId, string> = {
 	rewrite: "Model that rewrites your text as a native speaker and explains the changes. Needs a general instruction-following model.",
 };
 
-export class TranslateBlockSettingTab extends PluginSettingTab {
-	plugin: TranslateBlockPlugin;
+export class TranslatePolishSettingTab extends PluginSettingTab {
+	plugin: TranslatePolishPlugin;
 	private taskSelects: Partial<Record<TaskId, HTMLSelectElement>> = {};
 	private modelCountEls: Partial<Record<ProviderId, HTMLElement>> = {};
 
-	constructor(app: App, plugin: TranslateBlockPlugin) {
+	constructor(app: App, plugin: TranslatePolishPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

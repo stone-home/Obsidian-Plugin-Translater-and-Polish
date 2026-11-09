@@ -1,4 +1,4 @@
-# Translate Block
+# Translate and Polish
 
 Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
 
@@ -7,19 +7,19 @@ Write in a language that is not your first, select the passage, and the plugin g
 ## Features
 
 - **Quick translate** — a read-only bubble next to the selection. Switch between the direct translation and the native-speaker version, copy it, or jump to the full window. Esc, clicking outside, scrolling or changing panes closes it.
-- **Translate & polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native rewrite of your text* (same language as the input), *Translation* and *Suggestions* explaining what the rewrite changed. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
+- **Translate and polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native rewrite of your text* (same language as the input), *Translation* and *Suggestions* explaining what the rewrite changed. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
 - **Translate and replace selection** — no window; the selection is replaced with the direct translation.
 - **Two tasks, two models.** Translation and native rewrite are separate requests, each bound to its own provider and model. A dedicated translation model (for example translategemma on Ollama) can handle the translation while a general instruction-following model does the rewrite. The quick bubble requests the rewrite only when you switch to it.
 - **Three providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
 
 ## Commands and menu
 
-Right-click a selection to find **Quick translate** and **Translate & polish…** in the editor menu. The command palette offers:
+Right-click a selection to find **Quick translate** and **Translate and polish…** in the editor menu. The command palette offers:
 
 | Command | Needs a selection |
 |---|---|
 | Quick translate selection | yes |
-| Translate & polish selection | yes |
+| Open window for selection | yes |
 | Open translate & polish window | no (opens with an empty scratchpad) |
 | Translate and replace selection | yes |
 
@@ -45,7 +45,7 @@ Assign hotkeys to them in **Settings → Hotkeys**.
 
 ## Upgrading from 1.x
 
-Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin id changed from `obsidian-translate-block` to `translate-block`: install it into `.obsidian/plugins/translate-block/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
+Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin was renamed to Translate and Polish and its id changed from `obsidian-translate-block` to `translate-polish`: install it into `.obsidian/plugins/translate-polish/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
 
 Settings are migrated automatically: the old endpoint URL and model list become the Ollama provider's base URL and model list, the default model is bound to both tasks, and an `Authorization: Bearer …` line from *Extra headers* is moved into secret storage as the Ollama API key.
 

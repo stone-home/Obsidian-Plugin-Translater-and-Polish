@@ -50,7 +50,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 function debugLog(request: ProviderRequest, ...args: unknown[]): void {
 	if (request.debug) {
-		console.log("[translate-block]", ...args);
+		console.log("[translate-polish]", ...args);
 	}
 }
 

@@ -2,7 +2,7 @@ import { Menu, Modal, Notice } from "obsidian";
 import { editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { secretId } from "../providers";
 
-describe("TranslateBlockPlugin", () => {
+describe("TranslatePolishPlugin", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
 		Notice.all = [];
@@ -23,7 +23,7 @@ describe("TranslateBlockPlugin", () => {
 		expect(plugin.settingTab).toBeDefined();
 		expect(plugin.commands.map((c) => c.id)).toEqual([
 			"quick-translate-selection",
-			"translate-polish-selection",
+			"polish-selection",
 			"open-translate-modal",
 			"translate-replace-selection",
 		]);
@@ -43,7 +43,7 @@ describe("TranslateBlockPlugin", () => {
 		const menu = new Menu();
 		const editor = editorWithSelection("hello world", { line: 0, ch: 0 }, { line: 0, ch: 5 });
 		plugin.app.workspace.trigger("editor-menu", menu, editor);
-		expect(menu.items.map((i) => i.title)).toEqual(["Quick translate", "Translate & polish…"]);
+		expect(menu.items.map((i) => i.title)).toEqual(["Quick translate", "Translate and polish…"]);
 
 		mockBackend(plugin);
 		menu.items[0].callback?.(new MouseEvent("click", { clientX: 10, clientY: 20 }));
@@ -66,8 +66,8 @@ describe("TranslateBlockPlugin", () => {
 		byId("quick-translate-selection").editorCheckCallback!(false, full, null);
 		expect(document.querySelector(".translate-popover")).not.toBeNull();
 
-		expect(byId("translate-polish-selection").editorCheckCallback!(true, empty, null)).toBe(false);
-		byId("translate-polish-selection").editorCheckCallback!(false, full, null);
+		expect(byId("polish-selection").editorCheckCallback!(true, empty, null)).toBe(false);
+		byId("polish-selection").editorCheckCallback!(false, full, null);
 		expect(Modal.openInstances).toHaveLength(1);
 
 		byId("open-translate-modal").editorCallback!(empty, null);

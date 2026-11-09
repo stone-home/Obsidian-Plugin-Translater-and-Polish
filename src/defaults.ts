@@ -15,7 +15,7 @@ export interface TaskBinding {
 	model: string;
 }
 
-export interface TranslateBlockSettings {
+export interface TranslatePolishSettings {
 	settingsVersion: number;
 	providers: Record<ProviderId, ProviderConfig>;
 	tasks: Record<TaskId, TaskBinding>;
@@ -68,7 +68,7 @@ export function defaultTasks(): Record<TaskId, TaskBinding> {
 	};
 }
 
-export const DEFAULT_SETTINGS: TranslateBlockSettings = {
+export const DEFAULT_SETTINGS: TranslatePolishSettings = {
 	settingsVersion: SETTINGS_VERSION,
 	providers: defaultProviders(),
 	tasks: defaultTasks(),
@@ -84,6 +84,6 @@ export const DEFAULT_SETTINGS: TranslateBlockSettings = {
 };
 
 /** Fresh deep copy so callers never mutate the shared defaults. */
-export function freshDefaultSettings(): TranslateBlockSettings {
+export function freshDefaultSettings(): TranslatePolishSettings {
 	return { ...DEFAULT_SETTINGS, providers: defaultProviders(), tasks: defaultTasks() };
 }

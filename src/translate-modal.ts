@@ -1,5 +1,5 @@
 import { App, Editor, EditorPosition, Modal, Notice, debounce, setIcon } from "obsidian";
-import type TranslateBlockPlugin from "./main";
+import type TranslatePolishPlugin from "./main";
 import { TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
 import { populateLanguageSelect } from "./languages";
 import { decodeBinding, fillTaskModelSelect } from "./model-picker";
@@ -20,7 +20,7 @@ export function buildCallout(text: string, targetLang: string): string {
  * was opened from so results can be written back even after focus moved.
  */
 export class TranslateModal extends Modal {
-	private readonly plugin: TranslateBlockPlugin;
+	private readonly plugin: TranslatePolishPlugin;
 	private readonly editor: Editor | null;
 	private readonly from: EditorPosition | null;
 	private readonly to: EditorPosition | null;
@@ -56,7 +56,7 @@ export class TranslateModal extends Modal {
 
 	constructor(
 		app: App,
-		plugin: TranslateBlockPlugin,
+		plugin: TranslatePolishPlugin,
 		editor: Editor | null,
 		from: EditorPosition | null,
 		to: EditorPosition | null,
@@ -89,7 +89,7 @@ export class TranslateModal extends Modal {
 
 	onOpen(): void {
 		this.plugin.trackModal(this, true);
-		this.setTitle("Translate & polish");
+		this.setTitle("Translate and polish");
 		this.modalEl.addClass("translate-modal");
 		this.applySavedSize();
 		this.watchSize();

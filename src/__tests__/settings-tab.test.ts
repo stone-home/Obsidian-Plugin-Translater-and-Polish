@@ -1,7 +1,7 @@
 import { Notice } from "obsidian";
 import { flush, makePlugin } from "../../test/helpers";
-import { TranslateBlockSettingTab } from "../settings";
-import type TranslateBlockPlugin from "../main";
+import { TranslatePolishSettingTab } from "../settings";
+import type TranslatePolishPlugin from "../main";
 
 function fire(el: HTMLElement, type: string): void {
 	el.dispatchEvent(new Event(type, { bubbles: true }));
@@ -19,13 +19,13 @@ function settingByName(root: HTMLElement, name: string, index = 0): HTMLElement 
 	return hit;
 }
 
-describe("TranslateBlockSettingTab", () => {
-	let plugin: TranslateBlockPlugin;
-	let tab: TranslateBlockSettingTab;
+describe("TranslatePolishSettingTab", () => {
+	let plugin: TranslatePolishPlugin;
+	let tab: TranslatePolishSettingTab;
 
 	beforeEach(async () => {
 		plugin = await makePlugin();
-		tab = new TranslateBlockSettingTab(plugin.app, plugin);
+		tab = new TranslatePolishSettingTab(plugin.app, plugin);
 		tab.display();
 	});
 	afterEach(() => {

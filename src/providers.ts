@@ -90,7 +90,7 @@ export function modelsUrl(id: ProviderId, baseUrl: string): string {
 
 /** Storage id for the provider's API key in `app.secretStorage`. */
 export function secretId(id: ProviderId): string {
-	return `translate-block-${id}-api-key`;
+	return `translate-polish-${id}-api-key`;
 }
 
 /**
@@ -113,7 +113,7 @@ export function parseHeaderLines(raw: string): Record<string, string> {
 }
 
 export const OPENROUTER_REFERER = "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block";
-export const OPENROUTER_TITLE = "Obsidian Translate Block";
+export const OPENROUTER_TITLE = "Translate and Polish";
 
 /**
  * Builds request headers: Bearer auth when a key is present, OpenRouter

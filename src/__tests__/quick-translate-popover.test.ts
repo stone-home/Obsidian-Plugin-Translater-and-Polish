@@ -1,12 +1,12 @@
 import { Modal, Notice } from "obsidian";
 import { editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { QuickTranslatePopover } from "../quick-translate-popover";
-import type TranslateBlockPlugin from "../main";
+import type TranslatePolishPlugin from "../main";
 
 const anchor = { left: 100, right: 200, top: 100, bottom: 120 };
 
 describe("QuickTranslatePopover", () => {
-	let plugin: TranslateBlockPlugin;
+	let plugin: TranslatePolishPlugin;
 	let complete: jest.SpyInstance;
 
 	beforeEach(async () => {

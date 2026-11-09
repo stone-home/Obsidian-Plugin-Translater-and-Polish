@@ -5,7 +5,7 @@ import {
 	SETTINGS_VERSION,
 	TASK_IDS,
 	TaskBinding,
-	TranslateBlockSettings,
+	TranslatePolishSettings,
 	V2_DEFAULT_PROMPTS,
 	freshDefaultSettings,
 } from "./defaults";
@@ -14,7 +14,7 @@ import { parseModelList, resolveModel } from "./models";
 import { PROVIDER_DEFAULTS, PROVIDER_IDS, ProviderConfig, ProviderId, normalizeBaseUrl } from "./providers";
 
 export interface MigrationResult {
-	settings: TranslateBlockSettings;
+	settings: TranslatePolishSettings;
 	/** API key lifted out of a legacy `Authorization: Bearer …` header, to be stored as a secret. */
 	legacyApiKey?: string;
 	/** True when the stored shape changed and should be saved back. */
@@ -110,7 +110,7 @@ export function legacyEndpointToBaseUrl(endpointUrl: string): string {
 	return (endpointUrl || "").trim().replace(/\/api\/chat\/?$/i, "");
 }
 
-function applyCommonFields(target: TranslateBlockSettings, raw: Raw): void {
+function applyCommonFields(target: TranslatePolishSettings, raw: Raw): void {
 	target.defaultSourceLang = resolveLanguage(str(raw.defaultSourceLang, ""), target.defaultSourceLang);
 	target.defaultTargetLang = resolveLanguage(str(raw.defaultTargetLang, ""), target.defaultTargetLang);
 	target.liveDelayMs = positiveInt(raw.liveDelayMs, target.liveDelayMs);
@@ -124,7 +124,7 @@ function applyCommonFields(target: TranslateBlockSettings, raw: Raw): void {
 	if (height) target.modalHeight = height;
 }
 
-function applyPrompts(target: TranslateBlockSettings, raw: Raw): void {
+function applyPrompts(target: TranslatePolishSettings, raw: Raw): void {
 	const translate = str(raw.translatePrompt, "");
 	const rewrite = str(raw.rewritePrompt, "");
 	if (!isDefaultPrompt(translate)) target.translatePrompt = translate.trim();

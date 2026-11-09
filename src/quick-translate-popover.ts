@@ -1,5 +1,5 @@
 import { Editor, EditorPosition, EventRef, Notice, Scope, setIcon } from "obsidian";
-import type TranslateBlockPlugin from "./main";
+import type TranslatePolishPlugin from "./main";
 import { RewriteResult } from "./response-parser";
 import { TranslateModal } from "./translate-modal";
 import { runRewrite, runTranslate } from "./translation-job";
@@ -25,7 +25,7 @@ export class QuickTranslatePopover {
 	private static current: QuickTranslatePopover | undefined;
 
 	static open(
-		plugin: TranslateBlockPlugin,
+		plugin: TranslatePolishPlugin,
 		editor: Editor,
 		from: EditorPosition,
 		to: EditorPosition,
@@ -75,7 +75,7 @@ export class QuickTranslatePopover {
 	}
 
 	private constructor(
-		private readonly plugin: TranslateBlockPlugin,
+		private readonly plugin: TranslatePolishPlugin,
 		private readonly editor: Editor,
 		private readonly from: EditorPosition,
 		private readonly to: EditorPosition,

@@ -1,5 +1,5 @@
 import { TASK_LABELS, TaskId } from "./defaults";
-import type TranslateBlockPlugin from "./main";
+import type TranslatePolishPlugin from "./main";
 import { PROVIDER_LABELS } from "./providers";
 import {
 	REWRITE_PROMPT_SUFFIX,
@@ -37,7 +37,7 @@ export function isSoftErrorMessage(message: string): boolean {
 const RETRY_DELAY_MS = 300;
 
 /** System prompt for a task, with the rewrite format appended when the user's prompt lacks it. */
-export function buildTaskPrompt(plugin: TranslateBlockPlugin, task: TaskId, input: TaskInput): string {
+export function buildTaskPrompt(plugin: TranslatePolishPlugin, task: TaskId, input: TaskInput): string {
 	if (task === "translate") {
 		return renderPrompt(plugin.settings.translatePrompt.trim(), input.sourceLang, input.targetLang);
 	}
@@ -54,7 +54,7 @@ export function buildTaskPrompt(plugin: TranslateBlockPlugin, task: TaskId, inpu
  * Resolves to the raw assistant text, or `undefined` when nothing was delivered.
  */
 export async function runTask(
-	plugin: TranslateBlockPlugin,
+	plugin: TranslatePolishPlugin,
 	task: TaskId,
 	input: TaskInput,
 	callbacks: TaskCallbacks<string>,
@@ -110,7 +110,7 @@ export async function runTask(
 
 /** Translation task with the reply parsed to plain text. */
 export function runTranslate(
-	plugin: TranslateBlockPlugin,
+	plugin: TranslatePolishPlugin,
 	input: TaskInput,
 	callbacks: TaskCallbacks<string>,
 	signal?: StaleSignal,
@@ -126,7 +126,7 @@ export function runTranslate(
 
 /** Rewrite task with the reply parsed into rewrite + suggestions. */
 export function runRewrite(
-	plugin: TranslateBlockPlugin,
+	plugin: TranslatePolishPlugin,
 	input: TaskInput,
 	callbacks: TaskCallbacks<RewriteResult>,
 	signal?: StaleSignal,

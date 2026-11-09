@@ -3,14 +3,14 @@ import { freshDefaultSettings } from "./defaults";
 import { resolveLanguage } from "./languages";
 import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId, providerUsesApiKey, secretId } from "./providers";
 import { PopoverAnchor, QuickTranslatePopover } from "./quick-translate-popover";
-import { DEFAULT_SETTINGS, TranslateBlockSettingTab, TranslateBlockSettings } from "./settings";
+import { DEFAULT_SETTINGS, TranslatePolishSettingTab, TranslatePolishSettings } from "./settings";
 import { migrateSettings } from "./settings-migration";
 import { TranslateModal } from "./translate-modal";
 import { ProviderRequest, TranslationBackend, createDefaultBackend } from "./translation-backend";
 import { runTranslate } from "./translation-job";
 
-export default class TranslateBlockPlugin extends Plugin {
-	settings: TranslateBlockSettings = freshDefaultSettings();
+export default class TranslatePolishPlugin extends Plugin {
+	settings: TranslatePolishSettings = freshDefaultSettings();
 	private backend: TranslationBackend | undefined;
 	private readonly openModals = new Set<TranslateModal>();
 
@@ -18,7 +18,7 @@ export default class TranslateBlockPlugin extends Plugin {
 		await this.loadSettings();
 		this.backend = createDefaultBackend();
 
-		this.addSettingTab(new TranslateBlockSettingTab(this.app, this));
+		this.addSettingTab(new TranslatePolishSettingTab(this.app, this));
 		this.registerSelectionCommands();
 	}
 
@@ -46,14 +46,14 @@ export default class TranslateBlockPlugin extends Plugin {
 					item
 						.setTitle("Quick translate")
 						.setIcon("languages")
-						.setSection("translate-block")
+						.setSection("translate-polish")
 						.onClick((evt) => this.openQuickTranslate(editor, evt)),
 				);
 				menu.addItem((item) =>
 					item
-						.setTitle("Translate & polish…")
+						.setTitle("Translate and polish…")
 						.setIcon("languages")
-						.setSection("translate-block")
+						.setSection("translate-polish")
 						.onClick(() => this.openTranslateModal(editor)),
 				);
 			}),
@@ -69,8 +69,8 @@ export default class TranslateBlockPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
-			id: "translate-polish-selection",
-			name: "Translate & polish selection",
+			id: "polish-selection",
+			name: "Open window for selection",
 			editorCheckCallback: (checking, editor) => {
 				if (!editor.somethingSelected()) return false;
 				if (!checking) this.openTranslateModal(editor);
@@ -177,7 +177,7 @@ export default class TranslateBlockPlugin extends Plugin {
 			this.app.secretStorage.setSecret(secretId(id), value);
 		} catch (error) {
 			new Notice(
-				`Translate Block: could not store ${PROVIDER_LABELS[id]} API key. ` +
+				`Translate and Polish: could not store ${PROVIDER_LABELS[id]} API key. ` +
 					(error instanceof Error ? error.message : String(error)),
 			);
 		}

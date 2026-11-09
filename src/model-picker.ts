@@ -1,4 +1,4 @@
-import { TaskBinding, TranslateBlockSettings } from "./defaults";
+import { TaskBinding, TranslatePolishSettings } from "./defaults";
 import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId } from "./providers";
 
 const SEPARATOR = "::";
@@ -23,7 +23,7 @@ export function decodeBinding(value: string): TaskBinding | undefined {
  */
 export function fillTaskModelSelect(
 	select: HTMLSelectElement,
-	settings: TranslateBlockSettings,
+	settings: TranslatePolishSettings,
 	current: TaskBinding,
 ): boolean {
 	select.empty();

@@ -1,7 +1,7 @@
 import { Modal, Notice } from "obsidian";
 import { REWRITE_REPLY, editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { TranslateModal, buildCallout } from "../translate-modal";
-import type TranslateBlockPlugin from "../main";
+import type TranslatePolishPlugin from "../main";
 
 function fire(el: HTMLElement, type: string): void {
 	el.dispatchEvent(new Event(type, { bubbles: true }));
@@ -23,7 +23,7 @@ describe("buildCallout", () => {
 });
 
 describe("TranslateModal", () => {
-	let plugin: TranslateBlockPlugin;
+	let plugin: TranslatePolishPlugin;
 	let complete: jest.SpyInstance;
 
 	beforeEach(async () => {
@@ -47,7 +47,7 @@ describe("TranslateModal", () => {
 	it("runs both tasks on open and renders all sections", async () => {
 		const { modal, root } = openWithSelection();
 		expect(modal.modalEl.hasClass("translate-modal")).toBe(true);
-		expect(modal.titleEl.textContent).toBe("Translate & polish");
+		expect(modal.titleEl.textContent).toBe("Translate and polish");
 		await flush();
 		expect(complete).toHaveBeenCalledTimes(2);
 		expect(nativeBody(root).textContent).toBe("Native text.");
