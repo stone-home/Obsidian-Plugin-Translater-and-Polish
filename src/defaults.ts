@@ -32,6 +32,9 @@ export interface TranslateBlockSettings {
 	maxChars: number;
 	/** When enabled, debug logs are printed to the console. */
 	debug: boolean;
+	/** Last size the user dragged the translate window to, in CSS pixels. */
+	modalWidth?: number;
+	modalHeight?: number;
 }
 
 /** Default prompt shipped with 1.x; migrated to the new default when still unchanged. */

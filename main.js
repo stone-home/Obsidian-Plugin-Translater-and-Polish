@@ -578,11 +578,20 @@ var TranslateModal = class extends import_obsidian2.Modal {
       Math.max(100, plugin.settings.liveDelayMs),
       true
     );
+    this.saveSize = (0, import_obsidian2.debounce)(
+      () => {
+        void this.persistSize();
+      },
+      300,
+      true
+    );
   }
   onOpen() {
     this.plugin.trackModal(this, true);
     this.setTitle("Translate & polish");
     this.modalEl.addClass("translate-modal");
+    this.applySavedSize();
+    this.watchSize();
     const { contentEl } = this;
     contentEl.empty();
     contentEl.addClass("translate-modal-content");
@@ -607,7 +616,38 @@ var TranslateModal = class extends import_obsidian2.Modal {
     this.plugin.trackModal(this, false);
     this.seq += 1;
     this.scheduleRun.cancel();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = void 0;
+    this.saveSize.run();
     this.contentEl.empty();
+  }
+  /** Restores the size the user last dragged the window to. */
+  applySavedSize() {
+    const { modalWidth, modalHeight } = this.plugin.settings;
+    if (modalWidth) this.modalEl.style.width = `${modalWidth}px`;
+    if (modalHeight) this.modalEl.style.height = `${modalHeight}px`;
+  }
+  /** The window has CSS `resize: both`; remember the size the user drags it to. */
+  watchSize() {
+    if (typeof ResizeObserver === "undefined") return;
+    let first = true;
+    this.resizeObserver = new ResizeObserver(() => {
+      if (first) {
+        first = false;
+        return;
+      }
+      this.saveSize();
+    });
+    this.resizeObserver.observe(this.modalEl);
+  }
+  async persistSize() {
+    const width = Math.round(this.modalEl.offsetWidth);
+    const height = Math.round(this.modalEl.offsetHeight);
+    if (!width || !height) return;
+    if (width === this.plugin.settings.modalWidth && height === this.plugin.settings.modalHeight) return;
+    this.plugin.settings.modalWidth = width;
+    this.plugin.settings.modalHeight = height;
+    await this.plugin.saveSettings();
   }
   buildToolbar(bar) {
     for (const task of TASK_IDS) {
@@ -1314,6 +1354,10 @@ function applyCommonFields(target, raw) {
   target.timeoutMs = positiveInt(raw.timeoutMs, target.timeoutMs);
   target.maxChars = positiveInt(raw.maxChars, target.maxChars);
   target.debug = bool(raw.debug, target.debug);
+  const width = positiveInt(raw.modalWidth, 0);
+  const height = positiveInt(raw.modalHeight, 0);
+  if (width) target.modalWidth = width;
+  if (height) target.modalHeight = height;
 }
 function applyPrompts(target, raw) {
   const translate = str(raw.translatePrompt, "");

@@ -51,6 +51,8 @@ export class TranslateModal extends Modal {
 	private copyButton!: HTMLButtonElement;
 
 	private readonly scheduleRun: ReturnType<typeof debounce<[], void>>;
+	private readonly saveSize: ReturnType<typeof debounce<[], void>>;
+	private resizeObserver: ResizeObserver | undefined;
 
 	constructor(
 		app: App,
@@ -76,12 +78,21 @@ export class TranslateModal extends Modal {
 			Math.max(100, plugin.settings.liveDelayMs),
 			true,
 		);
+		this.saveSize = debounce(
+			() => {
+				void this.persistSize();
+			},
+			300,
+			true,
+		);
 	}
 
 	onOpen(): void {
 		this.plugin.trackModal(this, true);
 		this.setTitle("Translate & polish");
 		this.modalEl.addClass("translate-modal");
+		this.applySavedSize();
+		this.watchSize();
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.addClass("translate-modal-content");
@@ -112,7 +123,42 @@ export class TranslateModal extends Modal {
 		this.plugin.trackModal(this, false);
 		this.seq += 1;
 		this.scheduleRun.cancel();
+		this.resizeObserver?.disconnect();
+		this.resizeObserver = undefined;
+		this.saveSize.run();
 		this.contentEl.empty();
+	}
+
+	/** Restores the size the user last dragged the window to. */
+	private applySavedSize(): void {
+		const { modalWidth, modalHeight } = this.plugin.settings;
+		if (modalWidth) this.modalEl.style.width = `${modalWidth}px`;
+		if (modalHeight) this.modalEl.style.height = `${modalHeight}px`;
+	}
+
+	/** The window has CSS `resize: both`; remember the size the user drags it to. */
+	private watchSize(): void {
+		if (typeof ResizeObserver === "undefined") return;
+		let first = true;
+		this.resizeObserver = new ResizeObserver(() => {
+			// The first callback fires on observe(); only user-driven changes should be stored.
+			if (first) {
+				first = false;
+				return;
+			}
+			this.saveSize();
+		});
+		this.resizeObserver.observe(this.modalEl);
+	}
+
+	private async persistSize(): Promise<void> {
+		const width = Math.round(this.modalEl.offsetWidth);
+		const height = Math.round(this.modalEl.offsetHeight);
+		if (!width || !height) return;
+		if (width === this.plugin.settings.modalWidth && height === this.plugin.settings.modalHeight) return;
+		this.plugin.settings.modalWidth = width;
+		this.plugin.settings.modalHeight = height;
+		await this.plugin.saveSettings();
 	}
 
 	private buildToolbar(bar: HTMLElement): void {

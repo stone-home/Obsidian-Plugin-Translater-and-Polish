@@ -19,12 +19,26 @@
 }
 .modal.translate-modal {
   width: min(90vw, 900px);
-  max-width: 90vw;
+  height: min(85vh, 640px);
+  max-width: 95vw;
+  max-height: 95vh;
+  min-width: 480px;
+  min-height: 360px;
+  resize: both;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal.translate-modal .modal-content {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .translate-modal-content {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  height: 100%;
+  min-height: 0;
 }
 .translate-modal-toolbar,
 .translate-modal-footer {
@@ -50,6 +64,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 @media (max-width: 700px) {
   .translate-modal-columns {
@@ -62,6 +78,10 @@
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+  min-height: 0;
+}
+.translate-modal-results {
+  overflow: auto;
 }
 .translate-modal-label,
 .translate-card-title {
@@ -71,7 +91,7 @@
 }
 .translate-modal-textarea {
   width: 100%;
-  min-height: 260px;
+  min-height: 120px;
   flex: 1 1 auto;
   resize: vertical;
   box-sizing: border-box;
@@ -114,8 +134,6 @@
 .translate-card-body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 220px;
-  overflow: auto;
   line-height: 1.5;
 }
 .translate-suggestions {
@@ -136,6 +154,12 @@
   position: fixed;
   z-index: var(--layer-popover);
   width: min(420px, calc(100vw - 16px));
+  min-width: 240px;
+  min-height: 90px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  resize: both;
+  overflow: hidden;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
@@ -163,6 +187,8 @@
 .translate-popover-body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: 240px;
   overflow: auto;
   line-height: 1.5;

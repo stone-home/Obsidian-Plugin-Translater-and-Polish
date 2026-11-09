@@ -86,3 +86,25 @@ if (!(navigator as any).clipboard) {
 		value: { writeText: jest.fn(() => Promise.resolve()) },
 	});
 }
+
+/** ResizeObserver stub: tests trigger callbacks through `ResizeObserver.fire()`. */
+class FakeResizeObserver {
+	static instances: FakeResizeObserver[] = [];
+	static fire(): void {
+		for (const o of FakeResizeObserver.instances) o.cb([], o);
+	}
+	static reset(): void {
+		FakeResizeObserver.instances = [];
+	}
+	constructor(private cb: ResizeObserverCallback) {
+		FakeResizeObserver.instances.push(this);
+	}
+	observe(): void {
+		this.cb([], this);
+	}
+	disconnect(): void {
+		FakeResizeObserver.instances = FakeResizeObserver.instances.filter((o) => o !== this);
+	}
+	unobserve(): void {}
+}
+(globalThis as any).ResizeObserver = FakeResizeObserver;

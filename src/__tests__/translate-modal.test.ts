@@ -251,3 +251,54 @@ describe("TranslateModal", () => {
 		expect(modal.isOpen).toBe(true);
 	});
 });
+
+describe("TranslateModal size persistence", () => {
+	beforeEach(() => {
+		(globalThis as any).ResizeObserver.reset();
+	});
+	afterEach(() => {
+		document.body.innerHTML = "";
+		Modal.openInstances = [];
+		(globalThis as any).ResizeObserver.reset();
+		jest.useRealTimers();
+	});
+
+	it("restores a saved size and stores the size the user drags to", async () => {
+		jest.useFakeTimers();
+		const plugin = await makePlugin({ settingsVersion: 3, modalWidth: 700, modalHeight: 500 });
+		mockBackend(plugin);
+		const modal = new TranslateModal(plugin.app, plugin, null, null, null, "");
+		modal.open();
+		expect(modal.modalEl.style.width).toBe("700px");
+		expect(modal.modalEl.style.height).toBe("500px");
+
+		// Default jsdom offsets are 400x150 (see setup-dom); a resize callback should persist them.
+		(globalThis as any).ResizeObserver.fire();
+		jest.advanceTimersByTime(400);
+		await Promise.resolve();
+		expect(plugin.settings.modalWidth).toBe(400);
+		expect(plugin.settings.modalHeight).toBe(150);
+		expect((plugin as any).savedData()).toMatchObject({ modalWidth: 400, modalHeight: 150 });
+
+		modal.close();
+		expect((globalThis as any).ResizeObserver.instances).toHaveLength(0);
+	});
+
+	it("does nothing without ResizeObserver and ignores the initial observe callback", async () => {
+		const original = (globalThis as any).ResizeObserver;
+		(globalThis as any).ResizeObserver = undefined;
+		const plugin = await makePlugin();
+		mockBackend(plugin);
+		const modal = new TranslateModal(plugin.app, plugin, null, null, null, "");
+		modal.open();
+		modal.close();
+		expect(plugin.settings.modalWidth).toBeUndefined();
+		(globalThis as any).ResizeObserver = original;
+
+		const again = new TranslateModal(plugin.app, plugin, null, null, null, "");
+		again.open();
+		await flush();
+		expect(plugin.settings.modalWidth).toBeUndefined();
+		again.close();
+	});
+});

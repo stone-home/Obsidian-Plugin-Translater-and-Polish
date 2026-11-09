@@ -118,6 +118,10 @@ function applyCommonFields(target: TranslateBlockSettings, raw: Raw): void {
 	target.timeoutMs = positiveInt(raw.timeoutMs, target.timeoutMs);
 	target.maxChars = positiveInt(raw.maxChars, target.maxChars);
 	target.debug = bool(raw.debug, target.debug);
+	const width = positiveInt(raw.modalWidth, 0);
+	const height = positiveInt(raw.modalHeight, 0);
+	if (width) target.modalWidth = width;
+	if (height) target.modalHeight = height;
 }
 
 function applyPrompts(target: TranslateBlockSettings, raw: Raw): void {
