@@ -1,4 +1,4 @@
-/** Shared language codes for settings and TranslateWorkspace dropdowns. */
+/** Shared language codes for settings and translate window dropdowns. */
 export const LANGUAGE_OPTIONS = ["auto", "en", "zh", "ja", "fr", "de", "es"] as const;
 
 export type LanguageOption = (typeof LANGUAGE_OPTIONS)[number];
