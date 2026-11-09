@@ -1,5 +1,5 @@
 import { Modal, Notice } from "obsidian";
-import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
+import { REWRITE_REPLY, editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { TranslateModal, buildCallout } from "../translate-modal";
 import type TranslateBlockPlugin from "../main";
 
@@ -13,6 +13,9 @@ function buttonByText(root: HTMLElement, text: string): HTMLButtonElement {
 	return hit;
 }
 
+const nativeBody = (root: HTMLElement) => root.querySelector(".translate-card--native .translate-card-body")!;
+const directBody = (root: HTMLElement) => root.querySelector(".translate-card--direct .translate-card-body")!;
+
 describe("buildCallout", () => {
 	it("quotes every line under a translate callout header", () => {
 		expect(buildCallout("a\nb", "en")).toBe("> [!translate] en\n> a\n> b");
@@ -21,11 +24,11 @@ describe("buildCallout", () => {
 
 describe("TranslateModal", () => {
 	let plugin: TranslateBlockPlugin;
-	let translate: jest.SpyInstance;
+	let complete: jest.SpyInstance;
 
 	beforeEach(async () => {
 		plugin = await makePlugin();
-		translate = jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
+		complete = mockBackend(plugin);
 	});
 	afterEach(() => {
 		document.body.innerHTML = "";
@@ -41,15 +44,16 @@ describe("TranslateModal", () => {
 		return { editor, modal, root: modal.contentEl };
 	}
 
-	it("translates the selection on open and renders all three sections", async () => {
+	it("runs both tasks on open and renders all sections", async () => {
 		const { modal, root } = openWithSelection();
 		expect(modal.modalEl.hasClass("translate-modal")).toBe(true);
 		expect(modal.titleEl.textContent).toBe("Translate & polish");
 		await flush();
-		expect(root.querySelector(".translate-card--native .translate-card-body")!.textContent).toBe("Native text.");
-		expect(root.querySelector(".translate-card--direct .translate-card-body")!.textContent).toBe("Direct text.");
-		expect(root.querySelector(".translate-suggestions summary")!.textContent).toBe("Suggestions (1)");
-		expect(root.querySelector(".translate-modal-status")!.textContent).toMatch(/Translated in .* s · 5 chars/);
+		expect(complete).toHaveBeenCalledTimes(2);
+		expect(nativeBody(root).textContent).toBe("Native text.");
+		expect(directBody(root).textContent).toBe("Direct text.");
+		expect(root.querySelector(".translate-suggestions summary")!.textContent).toBe("What changed (1)");
+		expect(root.querySelector(".translate-modal-status")!.textContent).toMatch(/Done in .* s · 5 chars/);
 		expect(root.querySelector(".translate-card--native")!.hasClass("is-selected")).toBe(true);
 		expect(buttonByText(root, "Replace selection").disabled).toBe(false);
 	});
@@ -62,11 +66,10 @@ describe("TranslateModal", () => {
 		expect(modal.isOpen).toBe(false);
 	});
 
-	it("lets the user pick the direct card", async () => {
+	it("lets the user pick the translation card", async () => {
 		const { editor, root } = openWithSelection();
 		await flush();
-		const useButtons = root.querySelectorAll<HTMLButtonElement>(".translate-card-use");
-		useButtons[1].click();
+		root.querySelectorAll<HTMLButtonElement>(".translate-card-use")[1].click();
 		expect(root.querySelector(".translate-card--direct")!.hasClass("is-selected")).toBe(true);
 		buttonByText(root, "Replace selection").click();
 		expect(editor.getValue()).toBe("Direct text. world");
@@ -76,12 +79,13 @@ describe("TranslateModal", () => {
 		const { editor, root } = openWithSelection("line one\nline two\nline three", { line: 0, ch: 0 }, { line: 2, ch: 0 });
 		await flush();
 		buttonByText(root, "Insert as callout").click();
-		expect(editor.getValue()).toBe("line one\nline two\n> [!translate] en\n> Native text.\nline three");
+		expect(editor.getValue()).toBe("line one\nline two\n> [!translate] auto\n> Native text.\nline three");
 
 		const second = openWithSelection("abc\ndef", { line: 0, ch: 1 }, { line: 0, ch: 3 });
 		await flush();
+		second.root.querySelectorAll<HTMLButtonElement>(".translate-card-use")[1].click();
 		buttonByText(second.root, "Insert as callout").click();
-		expect(second.editor.getValue()).toBe("abc\n> [!translate] en\n> Native text.\ndef");
+		expect(second.editor.getValue()).toBe("abc\n> [!translate] en\n> Direct text.\ndef");
 	});
 
 	it("falls back to the cursor when the selection changed meanwhile", async () => {
@@ -104,7 +108,6 @@ describe("TranslateModal", () => {
 		const textarea = root.querySelector("textarea")!;
 		textarea.value = "typed";
 		fire(textarea, "input");
-		await flush();
 		(modal as any).scheduleRun.run();
 		await flush();
 		buttonByText(root, "Insert at cursor").click();
@@ -115,7 +118,7 @@ describe("TranslateModal", () => {
 		again.contentEl.querySelector("textarea")!.value = "typed";
 		await (again as any).run();
 		buttonByText(again.contentEl, "Insert as callout").click();
-		expect(editor.getValue().startsWith("\n> [!translate] en\n> Native text.\n")).toBe(true);
+		expect(editor.getValue().startsWith("\n> [!translate] auto\n> Native text.\n")).toBe(true);
 	});
 
 	it("copies the chosen text", async () => {
@@ -127,18 +130,18 @@ describe("TranslateModal", () => {
 		expect(Notice.all.pop()!.message).toBe("Copied to clipboard.");
 	});
 
-	it("debounces typing, clears on empty input and translates on Mod+Enter", async () => {
+	it("debounces typing, clears on empty input and runs on Mod+Enter", async () => {
 		jest.useFakeTimers();
 		const { modal, root } = openWithSelection();
 		await Promise.resolve();
-		translate.mockClear();
+		complete.mockClear();
 		const textarea = root.querySelector("textarea")!;
 		textarea.value = "new text";
 		fire(textarea, "input");
 		jest.advanceTimersByTime(300);
-		expect(translate).not.toHaveBeenCalled();
+		expect(complete).not.toHaveBeenCalled();
 		jest.advanceTimersByTime(600);
-		expect(translate).toHaveBeenCalledTimes(1);
+		expect(complete).toHaveBeenCalledTimes(2);
 
 		textarea.value = "";
 		fire(textarea, "input");
@@ -146,49 +149,62 @@ describe("TranslateModal", () => {
 
 		textarea.value = "again";
 		expect(modal.scope.fire("Enter", ["Mod"])).toBe(true);
-		expect(translate).toHaveBeenCalledTimes(2);
-		buttonByText(root, "Translate now").click();
-		expect(translate).toHaveBeenCalledTimes(3);
+		expect(complete).toHaveBeenCalledTimes(4);
+		buttonByText(root, "Run now").click();
+		expect(complete).toHaveBeenCalledTimes(6);
 	});
 
-	it("drops stale responses and shows errors", async () => {
+	it("drops stale responses and shows per-card errors", async () => {
 		const { root, modal } = openWithSelection();
 		await flush();
-		let resolveSlow: (r: any) => void = () => undefined;
-		translate.mockImplementationOnce(() => new Promise((res) => (resolveSlow = res)));
-		translate.mockResolvedValueOnce(result({ directTranslation: "fast", nativeRewrite: "", suggestions: [] }));
+		let resolveSlow: (r: string) => void = () => undefined;
+		complete.mockImplementationOnce(() => new Promise<string>((res) => (resolveSlow = res)));
+		complete.mockImplementationOnce(async () => "### NATIVE\nslow native");
 		(modal as any).run();
+		complete.mockImplementationOnce(async () => "fast").mockImplementationOnce(async () => "### NATIVE\nfast native\n### SUGGESTIONS\n- none");
 		(modal as any).run();
 		await flush();
-		expect(root.querySelector(".translate-card--direct .translate-card-body")!.textContent).toBe("fast");
-		expect(root.querySelector(".translate-card--direct")!.hasClass("is-selected")).toBe(true);
-		resolveSlow(result({ directTranslation: "slow" }));
-		await flush();
-		expect(root.querySelector(".translate-card--direct .translate-card-body")!.textContent).toBe("fast");
+		expect(directBody(root).textContent).toBe("fast");
+		expect(nativeBody(root).textContent).toBe("fast native");
 		expect(root.querySelector(".translate-suggestions")!.getAttribute("style")).toContain("none");
+		resolveSlow("slow");
+		await flush();
+		expect(directBody(root).textContent).toBe("fast");
 
-		translate.mockRejectedValueOnce(new Error("HTTP 401: nope"));
+		complete.mockImplementationOnce(async () => {
+			throw new Error("HTTP 401: nope");
+		}).mockImplementationOnce(async () => REWRITE_REPLY);
 		await (modal as any).run();
-		expect(root.querySelector(".translate-modal-status")!.textContent).toContain("HTTP 401");
+		expect(directBody(root).textContent).toContain("HTTP 401");
+		expect(nativeBody(root).textContent).toBe("Native text.");
+		expect(root.querySelector(".translate-modal-status")!.textContent).toMatch(/Done in/);
 	});
 
-	it("switches provider, model and languages from the toolbar", async () => {
+	it("moves the highlight to a card that has text", async () => {
+		complete.mockRestore();
+		mockBackend(plugin, "Only translation", new Error("HTTP 400: rewrite model down"));
+		const { root, editor } = openWithSelection();
+		await flush();
+		expect(root.querySelector(".translate-card--direct")!.hasClass("is-selected")).toBe(true);
+		expect(nativeBody(root).textContent).toContain("rewrite model down");
+		buttonByText(root, "Replace selection").click();
+		expect(editor.getValue()).toBe("Only translation world");
+	});
+
+	it("switches task models and languages from the toolbar", async () => {
 		plugin.settings.providers.openwebui.models = ["w1", "w2"];
-		plugin.settings.providers.openwebui.selectedModel = "w1";
 		const { root } = openWithSelection();
 		await flush();
-		const selects = root.querySelectorAll<HTMLSelectElement>(".translate-modal-toolbar select");
-		const [providerSelect, modelSelect, sourceSelect, targetSelect] = Array.from(selects);
-		providerSelect.value = "openwebui";
-		fire(providerSelect, "change");
+		const taskSelects = root.querySelectorAll<HTMLSelectElement>(".translate-modal-task select");
+		expect(taskSelects).toHaveLength(2);
+		taskSelects[1].value = "openwebui::w2";
+		fire(taskSelects[1], "change");
 		await flush();
-		expect(plugin.settings.activeProvider).toBe("openwebui");
-		expect(Array.from(modelSelect.options).map((o) => o.value)).toEqual(["w1", "w2"]);
-		modelSelect.value = "w2";
-		fire(modelSelect, "change");
-		await flush();
-		expect(plugin.settings.providers.openwebui.selectedModel).toBe("w2");
+		expect(plugin.settings.tasks.rewrite).toEqual({ provider: "openwebui", model: "w2" });
+		expect(plugin.settings.tasks.translate).toEqual({ provider: "ollama", model: "llama3" });
 
+		const langSelects = Array.from(root.querySelectorAll<HTMLSelectElement>(".translate-modal-toolbar > select"));
+		const [sourceSelect, targetSelect] = langSelects;
 		const swap = root.querySelector<HTMLButtonElement>('[aria-label="Swap languages"]')!;
 		swap.click();
 		expect(Notice.all[0].message).toContain("source language");
@@ -201,19 +217,16 @@ describe("TranslateModal", () => {
 		expect(targetSelect.value).toBe("zh");
 	});
 
-	it("refreshes models from the toolbar and reports failures", async () => {
-		const list = jest.spyOn(plugin.getBackend(), "listModels").mockResolvedValue(["z", "y"]);
+	it("refreshes models for all providers from the toolbar", async () => {
+		jest.spyOn(plugin.getBackend(), "listModels").mockResolvedValue(["z", "y"]);
 		const { root } = openWithSelection();
 		await flush();
-		const refresh = root.querySelector<HTMLButtonElement>('[aria-label="Fetch models"]')!;
+		const refresh = root.querySelector<HTMLButtonElement>('[aria-label="Fetch models from all providers"]')!;
 		refresh.click();
 		await flush();
-		expect(Notice.all.pop()!.message).toBe("Fetched 2 models.");
-		expect(Array.from(root.querySelectorAll<HTMLSelectElement>(".translate-modal-model option")).map((o) => o.value)).toEqual(["z", "y"]);
-		list.mockRejectedValue(new Error("down"));
-		refresh.click();
-		await flush();
-		expect(Notice.all.pop()!.message).toContain("down");
+		expect(Notice.all.pop()!.message).toBe("Models fetched. Ollama: 2");
+		const options = Array.from(root.querySelectorAll<HTMLOptionElement>(".translate-modal-task select")[0].parentElement!.querySelectorAll("option")).map((o) => o.value);
+		expect(options).toEqual(["ollama::z", "ollama::y", "ollama::llama3"]);
 		expect(refresh.hasClass("is-loading")).toBe(false);
 	});
 

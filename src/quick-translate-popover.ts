@@ -1,8 +1,8 @@
 import { Editor, EditorPosition, EventRef, Notice, Scope, setIcon } from "obsidian";
 import type TranslateBlockPlugin from "./main";
-import { StructuredTranslation } from "./response-parser";
+import { RewriteResult } from "./response-parser";
 import { TranslateModal } from "./translate-modal";
-import { runTranslationJob } from "./translation-job";
+import { runRewrite, runTranslate } from "./translation-job";
 
 type Variant = "direct" | "native";
 
@@ -17,8 +17,9 @@ const GAP = 6;
 const MARGIN = 8;
 
 /**
- * Read-only translation bubble anchored next to the selection. Only one is
- * open at a time; Esc, clicking outside, scrolling or switching leaves closes it.
+ * Read-only bubble anchored next to the selection. Shows the translation first;
+ * the native rewrite is requested only when the user switches to it. Only one
+ * is open at a time; Esc, clicking outside, scrolling or switching leaves closes it.
  */
 export class QuickTranslatePopover {
 	private static current: QuickTranslatePopover | undefined;
@@ -47,7 +48,9 @@ export class QuickTranslatePopover {
 	private bodyEl!: HTMLElement;
 	private statusEl!: HTMLElement;
 	private variantSelect!: HTMLSelectElement;
-	private result: StructuredTranslation | undefined;
+	private translation: string | undefined;
+	private rewrite: RewriteResult | undefined;
+	private rewriteRequested = false;
 	private variant: Variant = "direct";
 	private seq = 0;
 	private leafRef: EventRef | undefined;
@@ -63,13 +66,13 @@ export class QuickTranslatePopover {
 		if (this.isInside(evt.target)) return;
 		this.close();
 	};
+	private readonly onResize = (): void => this.close();
 
 	/** Popout windows have their own Node class, so use Obsidian's cross-window check. */
 	private isInside(target: EventTarget | null): boolean {
 		const node = target as Node | null;
 		return !!node && typeof node.instanceOf === "function" && node.instanceOf(Node) && this.el.contains(node);
 	}
-	private readonly onResize = (): void => this.close();
 
 	private constructor(
 		private readonly plugin: TranslateBlockPlugin,
@@ -100,6 +103,9 @@ export class QuickTranslatePopover {
 		this.variantSelect.addEventListener("change", () => {
 			this.variant = this.variantSelect.value as Variant;
 			this.renderBody();
+			if (this.variant === "native" && !this.rewriteRequested) {
+				void this.runRewrite();
+			}
 		});
 
 		header.createDiv({ cls: "translate-modal-spacer" });
@@ -124,7 +130,7 @@ export class QuickTranslatePopover {
 		this.leafRef = this.plugin.app.workspace.on("active-leaf-change", () => this.close());
 
 		this.position();
-		void this.run();
+		void this.runTranslate();
 	}
 
 	private iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): void {
@@ -133,42 +139,71 @@ export class QuickTranslatePopover {
 		button.addEventListener("click", onClick);
 	}
 
-	private async run(): Promise<void> {
+	private input() {
+		return {
+			sourceText: this.text,
+			sourceLang: this.plugin.settings.defaultSourceLang,
+			targetLang: this.plugin.settings.defaultTargetLang,
+		};
+	}
+
+	private signal() {
 		const my = ++this.seq;
-		await runTranslationJob(
+		return { isStale: () => my !== this.seq || this.closed };
+	}
+
+	private async runTranslate(): Promise<void> {
+		await runTranslate(
 			this.plugin,
+			this.input(),
 			{
-				sourceText: this.text,
-				sourceLang: this.plugin.settings.defaultSourceLang,
-				targetLang: this.plugin.settings.defaultTargetLang,
-			},
-			{
-				onStatus: (message) => this.statusEl.setText(message),
-				onResult: (result) => {
-					this.result = result;
-					if (!result.nativeRewrite) {
-						this.variantSelect.value = "direct";
-						this.variant = "direct";
-					}
+				onStatus: (message) => this.showStatus(message, false),
+				onResult: (translation) => {
+					this.translation = translation;
 					this.statusEl.hide();
 					this.renderBody();
 					this.position();
 				},
 				onError: (message) => {
-					this.statusEl.setText(message);
-					this.statusEl.addClass("is-error");
-					this.position();
+					this.renderBody();
+					this.showStatus(message, true);
 				},
 			},
-			{ isStale: () => my !== this.seq || this.closed },
+			this.signal(),
 		);
 	}
 
+	private async runRewrite(): Promise<void> {
+		this.rewriteRequested = true;
+		await runRewrite(
+			this.plugin,
+			this.input(),
+			{
+				onStatus: (message) => this.showStatus(message, false),
+				onResult: (rewrite) => {
+					this.rewrite = rewrite;
+					this.statusEl.hide();
+					this.renderBody();
+					this.position();
+				},
+				onError: (message) => {
+					this.renderBody();
+					this.showStatus(message, true);
+				},
+			},
+			this.signal(),
+		);
+	}
+
+	private showStatus(message: string, isError: boolean): void {
+		this.statusEl.setText(message);
+		this.statusEl.toggleClass("is-error", isError);
+		this.statusEl.show();
+		this.position();
+	}
+
 	private currentText(): string {
-		if (!this.result) return "";
-		return this.variant === "native" && this.result.nativeRewrite
-			? this.result.nativeRewrite
-			: this.result.directTranslation;
+		return this.variant === "native" ? (this.rewrite?.nativeRewrite ?? "") : (this.translation ?? "");
 	}
 
 	private renderBody(): void {

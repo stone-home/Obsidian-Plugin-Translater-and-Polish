@@ -1,10 +1,10 @@
 import { App, Editor, EditorPosition, Modal, Notice, debounce, setIcon } from "obsidian";
 import type TranslateBlockPlugin from "./main";
+import { TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
 import { populateLanguageSelect } from "./languages";
-import { fillModelSelect } from "./models";
-import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId } from "./providers";
-import { StructuredTranslation } from "./response-parser";
-import { runTranslationJob } from "./translation-job";
+import { decodeBinding, fillTaskModelSelect } from "./model-picker";
+import { RewriteResult } from "./response-parser";
+import { runRewrite, runTranslate } from "./translation-job";
 
 type Variant = "native" | "direct";
 
@@ -15,8 +15,9 @@ export function buildCallout(text: string, targetLang: string): string {
 }
 
 /**
- * Centered translate & polish workbench. Locks the editor and selection it was
- * opened from so results can be written back even after focus moved.
+ * Centered translate & polish workbench. Runs the translation and the native
+ * rewrite as two independent requests and locks the editor and selection it
+ * was opened from so results can be written back even after focus moved.
  */
 export class TranslateModal extends Modal {
 	private readonly plugin: TranslateBlockPlugin;
@@ -29,13 +30,15 @@ export class TranslateModal extends Modal {
 	private sourceLang: string;
 	private targetLang: string;
 	private seq = 0;
-	private result: StructuredTranslation | undefined;
+	private translation: string | undefined;
+	private rewrite: RewriteResult | undefined;
 	private chosen: Variant = "native";
 	private startedAt = 0;
+	private pending = 0;
 
 	private sourceEl!: HTMLTextAreaElement;
 	private statusEl!: HTMLElement;
-	private modelSelect!: HTMLSelectElement;
+	private taskSelects: Partial<Record<TaskId, HTMLSelectElement>> = {};
 	private nativeCard!: HTMLElement;
 	private directCard!: HTMLElement;
 	private nativeBody!: HTMLElement;
@@ -70,13 +73,9 @@ export class TranslateModal extends Modal {
 			() => {
 				void this.run();
 			},
-			this.liveDelay(),
+			Math.max(100, plugin.settings.liveDelayMs),
 			true,
 		);
-	}
-
-	private liveDelay(): number {
-		return Math.max(100, this.plugin.settings.liveDelayMs);
 	}
 
 	onOpen(): void {
@@ -117,42 +116,35 @@ export class TranslateModal extends Modal {
 	}
 
 	private buildToolbar(bar: HTMLElement): void {
-		const providerSelect = bar.createEl("select", { cls: "dropdown" });
-		for (const id of PROVIDER_IDS) {
-			const opt = providerSelect.createEl("option", { value: id, text: PROVIDER_LABELS[id] });
-			if (id === this.plugin.settings.activeProvider) opt.selected = true;
+		for (const task of TASK_IDS) {
+			const wrap = bar.createDiv({ cls: "translate-modal-task" });
+			wrap.createSpan({ cls: "translate-modal-task-label", text: TASK_LABELS[task] });
+			const select = wrap.createEl("select", { cls: "dropdown translate-modal-model" });
+			this.taskSelects[task] = select;
+			fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
+			select.addEventListener("change", () => {
+				void (async () => {
+					const binding = decodeBinding(select.value);
+					if (!binding) return;
+					this.plugin.settings.tasks[task] = binding;
+					await this.plugin.saveSettings();
+					this.scheduleRun();
+				})();
+			});
 		}
-		providerSelect.addEventListener("change", () => {
-			void (async () => {
-				this.plugin.settings.activeProvider = providerSelect.value as ProviderId;
-				await this.plugin.saveSettings();
-				this.refreshModelSelect();
-				this.scheduleRun();
-			})();
-		});
 
-		this.modelSelect = bar.createEl("select", { cls: "dropdown translate-modal-model" });
-		this.refreshModelSelect();
-		this.modelSelect.addEventListener("change", () => {
-			void (async () => {
-				const { config } = this.plugin.getActiveProvider();
-				config.selectedModel = this.modelSelect.value;
-				await this.plugin.saveSettings();
-				this.scheduleRun();
-			})();
+		const refresh = bar.createEl("button", {
+			cls: "clickable-icon translate-modal-icon",
+			attr: { "aria-label": "Fetch models from all providers" },
 		});
-
-		const refresh = bar.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": "Fetch models" } });
 		setIcon(refresh, "refresh-cw");
 		refresh.addEventListener("click", () => {
 			void (async () => {
 				refresh.addClass("is-loading");
 				try {
-					const models = await this.plugin.fetchModels(this.plugin.settings.activeProvider);
-					this.refreshModelSelect();
-					new Notice(`Fetched ${models.length} models.`);
-				} catch (error) {
-					new Notice(`Could not fetch models: ${error instanceof Error ? error.message : String(error)}`);
+					const summary = await this.plugin.fetchAllModels();
+					this.refreshTaskSelects();
+					new Notice(summary);
 				} finally {
 					refresh.removeClass("is-loading");
 				}
@@ -191,16 +183,18 @@ export class TranslateModal extends Modal {
 		});
 	}
 
-	private refreshModelSelect(): void {
-		const { config } = this.plugin.getActiveProvider();
-		fillModelSelect(this.modelSelect, config.models, config.selectedModel);
+	private refreshTaskSelects(): void {
+		for (const task of TASK_IDS) {
+			const select = this.taskSelects[task];
+			if (select) fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
+		}
 	}
 
 	private buildSourceColumn(column: HTMLElement): void {
-		column.createDiv({ cls: "translate-modal-label", text: "Source" });
+		column.createDiv({ cls: "translate-modal-label", text: "Your text" });
 		this.sourceEl = column.createEl("textarea", { cls: "translate-modal-textarea" });
 		this.sourceEl.spellcheck = true;
-		this.sourceEl.placeholder = "Type or paste text to translate…";
+		this.sourceEl.placeholder = "Type or paste the text you wrote…";
 		this.sourceEl.addEventListener("input", () => {
 			if (this.sourceEl.value.trim()) {
 				this.scheduleRun();
@@ -222,7 +216,7 @@ export class TranslateModal extends Modal {
 		this.directBody = direct.body;
 
 		this.suggestionsEl = column.createEl("details", { cls: "translate-suggestions" });
-		this.suggestionsSummary = this.suggestionsEl.createEl("summary", { text: "Suggestions" });
+		this.suggestionsSummary = this.suggestionsEl.createEl("summary", { text: "What changed" });
 		this.suggestionsList = this.suggestionsEl.createEl("ul");
 		this.suggestionsEl.hide();
 		this.updateChosenHighlight();
@@ -236,14 +230,15 @@ export class TranslateModal extends Modal {
 		use.addEventListener("click", () => {
 			this.chosen = variant;
 			this.updateChosenHighlight();
+			this.setResultButtonsEnabled(Boolean(this.chosenText()));
 		});
 		const body = card.createDiv({ cls: "translate-card-body", text: "—" });
 		return { card, body };
 	}
 
 	private buildFooter(footer: HTMLElement): void {
-		const translateNow = footer.createEl("button", { text: "Translate now" });
-		translateNow.setAttribute("aria-label", "Translate now (Ctrl/Cmd+Enter)");
+		const translateNow = footer.createEl("button", { text: "Run now" });
+		translateNow.setAttribute("aria-label", "Run now (Ctrl/Cmd+Enter)");
 		translateNow.addEventListener("click", () => {
 			void this.run();
 		});
@@ -282,45 +277,88 @@ export class TranslateModal extends Modal {
 		this.scheduleRun.cancel();
 		const text = this.sourceEl.value;
 		const my = ++this.seq;
+		const signal = { isStale: () => my !== this.seq };
+		const input = { sourceText: text, sourceLang: this.sourceLang, targetLang: this.targetLang };
+
 		this.startedAt = Date.now();
-		await runTranslationJob(
-			this.plugin,
-			{ sourceText: text, sourceLang: this.sourceLang, targetLang: this.targetLang },
-			{
-				onStatus: (message) => this.setStatus(message),
-				onResult: (result) => this.renderResult(result, text.length),
-				onError: (message) => {
-					this.setStatus(message);
+		this.pending = 2;
+		this.translation = undefined;
+		this.rewrite = undefined;
+		this.setResultButtonsEnabled(false);
+		this.suggestionsEl.hide();
+		this.setStatus("Running…");
+
+		const finishOne = (): void => {
+			this.pending -= 1;
+			if (this.pending === 0) {
+				this.afterAllDone();
+				const seconds = ((Date.now() - this.startedAt) / 1000).toFixed(1);
+				this.setStatus(`Done in ${seconds} s · ${text.length} chars`);
+			}
+		};
+
+		await Promise.all([
+			runTranslate(
+				this.plugin,
+				input,
+				{
+					onStatus: (message) => this.directBody.setText(message),
+					onResult: (translation) => {
+						this.translation = translation;
+						this.directBody.setText(translation || "—");
+						this.setResultButtonsEnabled(Boolean(this.chosenText()));
+						finishOne();
+					},
+					onError: (message) => {
+						this.directBody.setText(message);
+						finishOne();
+					},
 				},
-			},
-			{ isStale: () => my !== this.seq },
-		);
+				signal,
+			),
+			runRewrite(
+				this.plugin,
+				input,
+				{
+					onStatus: (message) => this.nativeBody.setText(message),
+					onResult: (rewrite) => {
+						this.rewrite = rewrite;
+						this.nativeBody.setText(rewrite.nativeRewrite || "—");
+						this.renderSuggestions(rewrite.suggestions);
+						this.setResultButtonsEnabled(Boolean(this.chosenText()));
+						finishOne();
+					},
+					onError: (message) => {
+						this.nativeBody.setText(message);
+						finishOne();
+					},
+				},
+				signal,
+			),
+		]);
 	}
 
-	private renderResult(result: StructuredTranslation, sourceLength: number): void {
-		this.result = result;
-		this.nativeBody.setText(result.nativeRewrite || "—");
-		this.directBody.setText(result.directTranslation || "—");
-
+	private renderSuggestions(suggestions: string[]): void {
 		this.suggestionsList.empty();
-		if (result.suggestions.length > 0) {
-			for (const item of result.suggestions) {
-				this.suggestionsList.createEl("li", { text: item });
-			}
-			this.suggestionsSummary.setText(`Suggestions (${result.suggestions.length})`);
-			this.suggestionsEl.show();
-		} else {
+		if (suggestions.length === 0) {
 			this.suggestionsEl.hide();
+			return;
 		}
+		for (const item of suggestions) {
+			this.suggestionsList.createEl("li", { text: item });
+		}
+		this.suggestionsSummary.setText(`What changed (${suggestions.length})`);
+		this.suggestionsEl.show();
+	}
 
-		if (!result.nativeRewrite && this.chosen === "native") {
-			this.chosen = "direct";
+	/** Once both tasks settled: if the chosen card came back empty, highlight the one that has text. */
+	private afterAllDone(): void {
+		if (!this.chosenText()) {
+			if (this.chosen === "native" && this.translation) this.chosen = "direct";
+			else if (this.chosen === "direct" && this.rewrite?.nativeRewrite) this.chosen = "native";
 		}
 		this.updateChosenHighlight();
 		this.setResultButtonsEnabled(Boolean(this.chosenText()));
-
-		const seconds = ((Date.now() - this.startedAt) / 1000).toFixed(1);
-		this.setStatus(`Translated in ${seconds} s · ${sourceLength} chars`);
 	}
 
 	private updateChosenHighlight(): void {
@@ -329,17 +367,14 @@ export class TranslateModal extends Modal {
 	}
 
 	private chosenText(): string {
-		if (!this.result) return "";
-		return this.chosen === "native" && this.result.nativeRewrite
-			? this.result.nativeRewrite
-			: this.result.directTranslation;
+		return this.chosen === "native" ? (this.rewrite?.nativeRewrite ?? "") : (this.translation ?? "");
 	}
 
 	private applyToEditor(mode: "plain" | "callout"): void {
 		const text = this.chosenText();
 		if (!text || !this.editor) return;
 		const editor = this.editor;
-		const payload = mode === "callout" ? buildCallout(text, this.targetLang) : text;
+		const payload = mode === "callout" ? buildCallout(text, this.chosen === "direct" ? this.targetLang : this.sourceLang) : text;
 
 		try {
 			this.writeBack(editor, payload, mode);
@@ -361,8 +396,7 @@ export class TranslateModal extends Modal {
 				new Notice("Selection changed while translating; inserted at the cursor instead.");
 			} else if (mode === "callout") {
 				// A selection ending at column 0 stops at the previous line's end.
-				const lastLine =
-					this.to.ch === 0 && this.to.line > this.from.line ? this.to.line - 1 : this.to.line;
+				const lastLine = this.to.ch === 0 && this.to.line > this.from.line ? this.to.line - 1 : this.to.line;
 				const lineEnd: EditorPosition = { line: lastLine, ch: editor.getLine(lastLine).length };
 				editor.replaceRange(`\n${payload}`, lineEnd);
 			} else {

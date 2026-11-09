@@ -1,15 +1,12 @@
 import { App, Editor } from "obsidian";
 import TranslateBlockPlugin from "../src/main";
-import { StructuredTranslation } from "../src/response-parser";
+import { RewriteResult } from "../src/response-parser";
 
-export function result(partial: Partial<StructuredTranslation> = {}): StructuredTranslation {
-	return {
-		directTranslation: "Direct text.",
-		nativeRewrite: "Native text.",
-		suggestions: ["tighten it"],
-		raw: "raw",
-		...partial,
-	};
+export const TRANSLATION_REPLY = "Direct text.";
+export const REWRITE_REPLY = "### NATIVE\nNative text.\n### SUGGESTIONS\n- tighten it";
+
+export function rewrite(partial: Partial<RewriteResult> = {}): RewriteResult {
+	return { nativeRewrite: "Native text.", suggestions: ["tighten it"], raw: REWRITE_REPLY, ...partial };
 }
 
 export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> {
@@ -18,6 +15,23 @@ export async function makePlugin(seed?: unknown): Promise<TranslateBlockPlugin> 
 	if (seed !== undefined) (plugin as any).seedData(seed);
 	await plugin.onload();
 	return plugin;
+}
+
+/**
+ * Mocks the backend so the translate task returns `translation` and the rewrite
+ * task returns `rewriteReply`. Routing is by system prompt: the rewrite prompt
+ * always carries the ### NATIVE marker.
+ */
+export function mockBackend(
+	plugin: TranslateBlockPlugin,
+	translation: string | Error = TRANSLATION_REPLY,
+	rewriteReply: string | Error = REWRITE_REPLY,
+): jest.SpyInstance {
+	return jest.spyOn(plugin.getBackend(), "complete").mockImplementation(async (systemPrompt: string) => {
+		const reply = systemPrompt.includes("### NATIVE") ? rewriteReply : translation;
+		if (reply instanceof Error) throw reply;
+		return reply;
+	});
 }
 
 /** Editor with `text`, selecting the given range. */

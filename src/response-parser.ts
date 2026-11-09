@@ -1,10 +1,13 @@
 /**
- * Parses the three-section model reply (translation, native rewrite of the
- * source text, suggestions). Pure module (no `obsidian` import).
+ * Parses model replies for the two tasks. Pure module (no `obsidian` import).
+ *
+ * - Translation replies are expected to be plain text; stray section markers
+ *   or code fences are tolerated.
+ * - Rewrite replies carry a NATIVE section and a SUGGESTIONS section; when the
+ *   markers are missing the whole reply is treated as the rewrite.
  */
 
-export interface StructuredTranslation {
-	directTranslation: string;
+export interface RewriteResult {
 	nativeRewrite: string;
 	suggestions: string[];
 	raw: string;
@@ -17,20 +20,17 @@ export const SECTION_MARKERS = {
 } as const;
 
 /**
- * Appended to the user's prompt when it does not already mention the DIRECT
- * marker. `{{targetLang}}` is substituted by the backend.
+ * Appended to the rewrite prompt when it does not already mention the NATIVE
+ * marker. `{{sourceLang}}` is substituted by the backend.
  */
-export const STRUCTURED_PROMPT_SUFFIX = [
-	"Format your entire reply with exactly these three sections and nothing else:",
-	"",
-	SECTION_MARKERS.direct,
-	"A faithful translation of the text into {{targetLang}}.",
+export const REWRITE_PROMPT_SUFFIX = [
+	"Format your entire reply with exactly these two sections and nothing else:",
 	"",
 	SECTION_MARKERS.native,
-	"The original text rewritten in its own language ({{sourceLang}}), exactly as a fluent native speaker would phrase it, keeping the meaning and tone. Do not translate this section.",
+	"The rewritten text, in {{sourceLang}}.",
 	"",
 	SECTION_MARKERS.suggestions,
-	'At most five short bullet points explaining what the rewrite changed and why (grammar, word choice, idiom, tone), so the writer can learn from it. Write "- none" if nothing needed changing.',
+	'At most five short bullet points explaining what you changed and why (grammar, word choice, idiom, tone). Write "- none" if nothing needed changing.',
 ].join("\n");
 
 type SectionKey = "direct" | "native" | "suggestions";
@@ -38,22 +38,19 @@ type SectionKey = "direct" | "native" | "suggestions";
 /**
  * A section heading is the label alone on a line, wrapped in at least one of:
  * leading `#`s, `**bold**`, or a trailing colon. A bare "Direct" line in the
- * translation itself is left alone.
+ * text itself is left alone.
  */
 const HEADING_RE =
-	/^[ \t]*(#{1,6}[ \t]*)?(\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+POLISH)?|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*(:)?[ \t]*$/i;
+	/^[ \t]*(#{1,6}[ \t]*)?(\*\*)?[ \t]*(DIRECT(?:[ \t]+TRANSLATION)?|NATIVE(?:[ \t]+(?:POLISH|REWRITE))?|REWRITE|SUGGESTIONS?)[ \t]*(?:\*\*)?[ \t]*(:)?[ \t]*$/i;
 
-function matchHeading(line: string): string | null {
+function matchHeading(line: string): SectionKey | null {
 	const m = HEADING_RE.exec(line);
 	if (!m) return null;
-	return m[1] || m[2] || m[4] ? m[3] : null;
-}
-
-function keyFor(label: string): SectionKey {
-	const upper = label.toUpperCase();
+	if (!(m[1] || m[2] || m[4])) return null;
+	const upper = m[3].toUpperCase();
 	if (upper.startsWith("DIRECT")) return "direct";
-	if (upper.startsWith("NATIVE")) return "native";
-	return "suggestions";
+	if (upper.startsWith("SUGGESTION")) return "suggestions";
+	return "native";
 }
 
 /** Removes one wrapping ``` fence when the whole text is fenced. */
@@ -63,6 +60,41 @@ function stripOuterFence(text: string): string {
 		return lines.slice(1, -1).join("\n");
 	}
 	return text;
+}
+
+interface Split {
+	preamble: string;
+	sections: Record<SectionKey, string>;
+	seen: Record<SectionKey, boolean>;
+	anyMarker: boolean;
+}
+
+function splitSections(rawInput: string): Split {
+	const text = stripOuterFence((rawInput ?? "").replace(/\r\n?/g, "\n").trim());
+	const buckets: Record<SectionKey, string[]> = { direct: [], native: [], suggestions: [] };
+	const seen: Record<SectionKey, boolean> = { direct: false, native: false, suggestions: false };
+	const preamble: string[] = [];
+	let current: SectionKey | null = null;
+
+	for (const line of text.split("\n")) {
+		const key = matchHeading(line);
+		if (key) {
+			current = key;
+			seen[key] = true;
+			continue;
+		}
+		(current ? buckets[current] : preamble).push(line);
+	}
+	return {
+		preamble: preamble.join("\n").trim(),
+		sections: {
+			direct: buckets.direct.join("\n").trim(),
+			native: buckets.native.join("\n").trim(),
+			suggestions: buckets.suggestions.join("\n").trim(),
+		},
+		seen,
+		anyMarker: seen.direct || seen.native || seen.suggestions,
+	};
 }
 
 export function parseSuggestionList(block: string): string[] {
@@ -76,44 +108,24 @@ export function parseSuggestionList(block: string): string[] {
 	return out;
 }
 
-export function parseStructuredResponse(rawInput: string): StructuredTranslation {
-	const raw = (rawInput ?? "").replace(/\r\n?/g, "\n");
-	const text = stripOuterFence(raw.trim());
-	const lines = text.split("\n");
+/** Plain translation; tolerates a model that still emits section markers. */
+export function parseTranslationResponse(raw: string): string {
+	const split = splitSections(raw);
+	if (!split.anyMarker) return split.preamble;
+	if (split.seen.direct && split.sections.direct) return split.sections.direct;
+	return split.preamble || split.sections.native;
+}
 
-	const sections: Record<SectionKey, string[]> = { direct: [], native: [], suggestions: [] };
-	const seen: Record<SectionKey, boolean> = { direct: false, native: false, suggestions: false };
-	const preamble: string[] = [];
-	let current: SectionKey | null = null;
-
-	for (const line of lines) {
-		const label = matchHeading(line);
-		if (label) {
-			current = keyFor(label);
-			seen[current] = true;
-			continue;
-		}
-		if (current) {
-			sections[current].push(line);
-		} else {
-			preamble.push(line);
-		}
+export function parseRewriteResponse(raw: string): RewriteResult {
+	const normalized = (raw ?? "").replace(/\r\n?/g, "\n");
+	const split = splitSections(normalized);
+	if (!split.anyMarker) {
+		return { nativeRewrite: split.preamble, suggestions: [], raw: normalized };
 	}
-
-	const anyMarker = seen.direct || seen.native || seen.suggestions;
-	if (!anyMarker) {
-		return { directTranslation: text.trim(), nativeRewrite: "", suggestions: [], raw };
-	}
-
-	const direct = sections.direct.join("\n").trim();
-	const native = sections.native.join("\n").trim();
-	const suggestions = parseSuggestionList(sections.suggestions.join("\n"));
-	const fallbackDirect = preamble.join("\n").trim() || native;
-
+	const rewrite = split.sections.native || split.sections.direct || split.preamble;
 	return {
-		directTranslation: seen.direct && direct ? direct : fallbackDirect,
-		nativeRewrite: native,
-		suggestions,
-		raw,
+		nativeRewrite: rewrite,
+		suggestions: parseSuggestionList(split.sections.suggestions),
+		raw: normalized,
 	};
 }

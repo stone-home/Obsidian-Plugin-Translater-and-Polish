@@ -1,7 +1,8 @@
-import { App, ButtonComponent, DropdownComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
+import { App, ButtonComponent, Notice, PluginSettingTab, Setting, debounce } from "obsidian";
 import TranslateBlockPlugin from "./main";
-import { DEFAULT_SETTINGS } from "./defaults";
+import { DEFAULT_SETTINGS, TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
 import { LANGUAGE_OPTIONS, resolveLanguage } from "./languages";
+import { decodeBinding, fillTaskModelSelect } from "./model-picker";
 import {
 	PROVIDER_DEFAULTS,
 	PROVIDER_IDS,
@@ -15,24 +16,15 @@ import {
 export type { TranslateBlockSettings } from "./defaults";
 export { DEFAULT_SETTINGS } from "./defaults";
 
-/** Fills a model dropdown; shows a disabled hint when the list is empty. */
-export function populateModelDropdown(dropdown: DropdownComponent, models: string[], selected: string): void {
-	dropdown.selectEl.empty();
-	if (models.length === 0) {
-		dropdown.addOption("", "No models yet. Click Fetch models.");
-		dropdown.setValue("");
-		dropdown.setDisabled(true);
-		return;
-	}
-	dropdown.setDisabled(false);
-	for (const name of models) {
-		dropdown.addOption(name, name);
-	}
-	dropdown.setValue(models.includes(selected) ? selected : models[0]);
-}
+const TASK_DESCRIPTIONS: Record<TaskId, string> = {
+	translate: "Model that translates the text. Dedicated translation models (e.g. translategemma) work well here.",
+	rewrite: "Model that rewrites your text as a native speaker and explains the changes. Needs a general instruction-following model.",
+};
 
 export class TranslateBlockSettingTab extends PluginSettingTab {
 	plugin: TranslateBlockPlugin;
+	private taskSelects: Partial<Record<TaskId, HTMLSelectElement>> = {};
+	private modelCountEls: Partial<Record<ProviderId, HTMLElement>> = {};
 
 	constructor(app: App, plugin: TranslateBlockPlugin) {
 		super(app, plugin);
@@ -42,8 +34,10 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.taskSelects = {};
+		this.modelCountEls = {};
 
-		this.renderProviderSection(containerEl);
+		this.renderTasksSection(containerEl);
 		for (const id of PROVIDER_IDS) {
 			this.renderProviderConfig(containerEl, id);
 		}
@@ -51,21 +45,30 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 		this.renderAdvancedSection(containerEl);
 	}
 
-	private renderProviderSection(containerEl: HTMLElement): void {
-		new Setting(containerEl).setName("Provider").setHeading();
-
-		new Setting(containerEl)
-			.setName("Active provider")
-			.setDesc("Backend used for translations.")
-			.addDropdown((dropdown) => {
-				for (const id of PROVIDER_IDS) {
-					dropdown.addOption(id, PROVIDER_LABELS[id]);
-				}
-				dropdown.setValue(this.plugin.settings.activeProvider).onChange(async (value) => {
-					this.plugin.settings.activeProvider = value as ProviderId;
-					await this.plugin.saveSettings();
+	private renderTasksSection(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName("Models").setHeading();
+		for (const task of TASK_IDS) {
+			new Setting(containerEl)
+				.setName(`${TASK_LABELS[task]} model`)
+				.setDesc(TASK_DESCRIPTIONS[task])
+				.addDropdown((dropdown) => {
+					this.taskSelects[task] = dropdown.selectEl;
+					fillTaskModelSelect(dropdown.selectEl, this.plugin.settings, this.plugin.settings.tasks[task]);
+					dropdown.onChange(async (value) => {
+						const binding = decodeBinding(value);
+						if (!binding) return;
+						this.plugin.settings.tasks[task] = binding;
+						await this.plugin.saveSettings();
+					});
 				});
-			});
+		}
+	}
+
+	private refreshTaskSelects(): void {
+		for (const task of TASK_IDS) {
+			const select = this.taskSelects[task];
+			if (select) fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
+		}
 	}
 
 	private renderProviderConfig(containerEl: HTMLElement, id: ProviderId): void {
@@ -102,35 +105,32 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 				});
 		}
 
-		let modelDropdown: DropdownComponent | undefined;
-		new Setting(containerEl)
-			.setName("Model")
-			.setDesc("Model used for requests. Fetch models to refresh the list from the server.")
-			.addDropdown((dropdown) => {
-				modelDropdown = dropdown;
-				populateModelDropdown(dropdown, config.models, config.selectedModel);
-				dropdown.onChange(async (value) => {
-					config.selectedModel = value;
-					await this.plugin.saveSettings();
-				});
-			})
-			.addButton((button: ButtonComponent) => {
-				button.setButtonText("Fetch models").onClick(async () => {
-					button.setDisabled(true).setButtonText("Fetching…");
-					try {
-						const models = await this.plugin.fetchModels(id);
-						if (modelDropdown) {
-							populateModelDropdown(modelDropdown, models, config.selectedModel);
-						}
-						new Notice(`Fetched ${models.length} model${models.length === 1 ? "" : "s"} from ${PROVIDER_LABELS[id]}.`);
-					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
-						new Notice(`Could not fetch models from ${PROVIDER_LABELS[id]}: ${message}`);
-					} finally {
-						button.setDisabled(false).setButtonText("Fetch models");
-					}
-				});
+		const modelsSetting = new Setting(containerEl)
+			.setName("Available models")
+			.setDesc(this.modelCountText(id));
+		this.modelCountEls[id] = modelsSetting.descEl;
+		modelsSetting.addButton((button: ButtonComponent) => {
+			button.setButtonText("Fetch models").onClick(async () => {
+				button.setDisabled(true).setButtonText("Fetching…");
+				try {
+					const models = await this.plugin.fetchModels(id);
+					this.modelCountEls[id]?.setText(this.modelCountText(id));
+					this.refreshTaskSelects();
+					new Notice(`Fetched ${models.length} model${models.length === 1 ? "" : "s"} from ${PROVIDER_LABELS[id]}.`);
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					new Notice(`Could not fetch models from ${PROVIDER_LABELS[id]}: ${message}`);
+				} finally {
+					button.setDisabled(false).setButtonText("Fetch models");
+				}
 			});
+		});
+	}
+
+	private modelCountText(id: ProviderId): string {
+		const count = this.plugin.settings.providers[id].models.length;
+		if (count === 0) return "No models fetched yet. They appear in the model pickers above once fetched.";
+		return `${count} model${count === 1 ? "" : "s"} available in the model pickers above.`;
 	}
 
 	private renderTranslationSection(containerEl: HTMLElement): void {
@@ -138,7 +138,7 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Default source language")
-			.setDesc("Language of the source text.")
+			.setDesc("Language you write in. The native rewrite stays in this language.")
 			.addDropdown((dropdown) => {
 				for (const code of LANGUAGE_OPTIONS) {
 					dropdown.addOption(code, code);
@@ -167,22 +167,36 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("Default prompt")
-			.setDesc(
-				"Prompt template. You can use {{sourceLang}} and {{targetLang}}. The three-section output format is appended automatically unless the prompt already contains ### DIRECT.",
-			)
+			.setName("Translation prompt")
+			.setDesc("System prompt for the translation model. You can use {{sourceLang}} and {{targetLang}}.")
 			.setClass("setting-control-on-new-line")
 			.addTextArea((text) =>
 				text
-					.setPlaceholder(DEFAULT_SETTINGS.defaultPrompt)
-					.setValue(this.plugin.settings.defaultPrompt)
+					.setPlaceholder(DEFAULT_SETTINGS.translatePrompt)
+					.setValue(this.plugin.settings.translatePrompt)
 					.onChange(async (value) => {
-						this.plugin.settings.defaultPrompt = value.trim() || DEFAULT_SETTINGS.defaultPrompt;
+						this.plugin.settings.translatePrompt = value.trim() || DEFAULT_SETTINGS.translatePrompt;
 						await this.plugin.saveSettings();
 					}),
 			);
 
-		this.addNumberSetting(containerEl, "Live translate delay (ms)", "How long to wait after typing stops before the translate window re-translates.", "liveDelayMs");
+		new Setting(containerEl)
+			.setName("Rewrite prompt")
+			.setDesc(
+				"System prompt for the native-rewrite model. The ### NATIVE / ### SUGGESTIONS output format is appended automatically unless the prompt already contains ### NATIVE.",
+			)
+			.setClass("setting-control-on-new-line")
+			.addTextArea((text) =>
+				text
+					.setPlaceholder(DEFAULT_SETTINGS.rewritePrompt)
+					.setValue(this.plugin.settings.rewritePrompt)
+					.onChange(async (value) => {
+						this.plugin.settings.rewritePrompt = value.trim() || DEFAULT_SETTINGS.rewritePrompt;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		this.addNumberSetting(containerEl, "Live translate delay (ms)", "How long to wait after typing stops before the translate window re-runs.", "liveDelayMs");
 		this.addNumberSetting(containerEl, "Max text size (characters)", "Longer texts are refused to protect against runaway requests.", "maxChars");
 	}
 
@@ -190,7 +204,7 @@ export class TranslateBlockSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName("Advanced").setHeading();
 
 		this.addNumberSetting(containerEl, "Request timeout (ms)", "Each request is abandoned after this long.", "timeoutMs");
-		this.addNumberSetting(containerEl, "Max attempts", "Retries for a single translation on network or server errors.", "maxAttempts");
+		this.addNumberSetting(containerEl, "Max attempts", "Retries for a single request on network or server errors.", "maxAttempts");
 
 		for (const id of PROVIDER_IDS) {
 			const config = this.plugin.settings.providers[id];

@@ -1,18 +1,6 @@
 import { requestUrl } from "obsidian";
-import { DEFAULT_PROMPT, DEFAULT_SETTINGS } from "./defaults";
-import {
-	ProviderId,
-	buildHeaders,
-	chatUrl,
-	mapModelsResponse,
-	modelsUrl,
-} from "./providers";
-import {
-	SECTION_MARKERS,
-	STRUCTURED_PROMPT_SUFFIX,
-	StructuredTranslation,
-	parseStructuredResponse,
-} from "./response-parser";
+import { DEFAULT_SETTINGS } from "./defaults";
+import { ProviderId, buildHeaders, chatUrl, mapModelsResponse, modelsUrl } from "./providers";
 
 export interface ProviderRequest {
 	provider: ProviderId;
@@ -24,18 +12,13 @@ export interface ProviderRequest {
 	debug?: boolean;
 }
 
-export interface TranslationRequest extends ProviderRequest {
+export interface CompletionRequest extends ProviderRequest {
 	model: string;
-	prompt: string;
 }
 
 export interface TranslationBackend {
-	translate(
-		text: string,
-		sourceLang: string,
-		targetLang: string,
-		request: TranslationRequest,
-	): Promise<StructuredTranslation>;
+	/** Sends one system + user message pair and returns the assistant text. */
+	complete(systemPrompt: string, userText: string, request: CompletionRequest): Promise<string>;
 	listModels(request: ProviderRequest): Promise<string[]>;
 }
 
@@ -43,14 +26,10 @@ export function createDefaultBackend(): TranslationBackend {
 	return new HttpTranslationBackend();
 }
 
-/** Builds the system prompt: user template + structured-output suffix, placeholders substituted. */
-export function buildSystemPrompt(prompt: string, sourceLang: string, targetLang: string): string {
-	let template = (prompt || "").trim() || DEFAULT_PROMPT;
-	if (!template.toUpperCase().includes(SECTION_MARKERS.direct)) {
-		template = `${template}\n\n${STRUCTURED_PROMPT_SUFFIX}`;
-	}
+/** Substitutes language placeholders; `auto` becomes a phrase the model can act on. */
+export function renderPrompt(template: string, sourceLang: string, targetLang: string): string {
 	const source = sourceLang || DEFAULT_SETTINGS.defaultSourceLang;
-	const effectiveSource = source === "auto" ? "the detected language" : source;
+	const effectiveSource = source === "auto" ? "the language of the text" : source;
 	const effectiveTarget = targetLang || DEFAULT_SETTINGS.defaultTargetLang;
 	return template.replace(/{{sourceLang}}/g, effectiveSource).replace(/{{targetLang}}/g, effectiveTarget);
 }
@@ -90,17 +69,11 @@ function httpError(status: number, body: string): Error {
 }
 
 export class HttpTranslationBackend implements TranslationBackend {
-	async translate(
-		text: string,
-		sourceLang: string,
-		targetLang: string,
-		request: TranslationRequest,
-	): Promise<StructuredTranslation> {
+	async complete(systemPrompt: string, userText: string, request: CompletionRequest): Promise<string> {
 		const url = chatUrl(request.provider, request.baseUrl);
-		const systemPrompt = buildSystemPrompt(request.prompt, sourceLang, targetLang);
 		const messages = [
 			{ role: "system", content: systemPrompt },
-			{ role: "user", content: text },
+			{ role: "user", content: userText },
 		];
 		const body =
 			request.provider === "ollama"
@@ -130,15 +103,9 @@ export class HttpTranslationBackend implements TranslationBackend {
 		const content = extractContent(request.provider, parseJsonBody(response));
 		if (!content) {
 			debugLog(request, "Unexpected response shape:", response.text);
-			throw new Error("No content in translation response.");
+			throw new Error("No content in model response.");
 		}
-		const parsed = parseStructuredResponse(content);
-		debugLog(request, "Parsed sections:", {
-			direct: parsed.directTranslation.length,
-			native: parsed.nativeRewrite.length,
-			suggestions: parsed.suggestions.length,
-		});
-		return parsed;
+		return content;
 	}
 
 	async listModels(request: ProviderRequest): Promise<string[]> {

@@ -1,5 +1,5 @@
 import { Menu, Modal, Notice } from "obsidian";
-import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
+import { editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { secretId } from "../providers";
 
 describe("TranslateBlockPlugin", () => {
@@ -16,9 +16,10 @@ describe("TranslateBlockPlugin", () => {
 			defaultModel: "m2",
 			extraHeadersRaw: "Authorization: Bearer old-key",
 		});
-		expect(plugin.settings.providers.ollama).toMatchObject({ baseUrl: "http://h:1", selectedModel: "m2" });
+		expect(plugin.settings.providers.ollama).toMatchObject({ baseUrl: "http://h:1" });
+		expect(plugin.settings.tasks.translate).toEqual({ provider: "ollama", model: "m2" });
 		expect(plugin.app.secretStorage.getSecret(secretId("ollama"))).toBe("old-key");
-		expect((plugin as any).savedData()).toMatchObject({ settingsVersion: 2 });
+		expect((plugin as any).savedData()).toMatchObject({ settingsVersion: 3 });
 		expect(plugin.settingTab).toBeDefined();
 		expect(plugin.commands.map((c) => c.id)).toEqual([
 			"quick-translate-selection",
@@ -44,7 +45,7 @@ describe("TranslateBlockPlugin", () => {
 		plugin.app.workspace.trigger("editor-menu", menu, editor);
 		expect(menu.items.map((i) => i.title)).toEqual(["Quick translate", "Translate & polish…"]);
 
-		jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
+		mockBackend(plugin);
 		menu.items[0].callback?.(new MouseEvent("click", { clientX: 10, clientY: 20 }));
 		expect(document.querySelector(".translate-popover")).not.toBeNull();
 		menu.items[1].callback?.(undefined);
@@ -54,7 +55,7 @@ describe("TranslateBlockPlugin", () => {
 
 	it("gates selection commands on a selection", async () => {
 		const plugin = await makePlugin();
-		jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
+		mockBackend(plugin);
 		const empty = editorWithSelection("abc", { line: 0, ch: 0 }, { line: 0, ch: 0 });
 		const full = editorWithSelection("abc", { line: 0, ch: 0 }, { line: 0, ch: 3 });
 		const byId = (id: string) => plugin.commands.find((c) => c.id === id)!;
@@ -80,23 +81,23 @@ describe("TranslateBlockPlugin", () => {
 
 	it("replaces the selection in place and reports failures", async () => {
 		const plugin = await makePlugin();
-		const translate = jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result({ directTranslation: "X" }));
+		const complete = mockBackend(plugin, "X");
 		const editor = editorWithSelection("ab cd", { line: 0, ch: 3 }, { line: 0, ch: 5 });
 		await plugin.translateAndReplaceSelection(editor);
 		expect(editor.getValue()).toBe("ab X");
 		expect(Notice.all[0].hidden).toBe(true);
 
 		const unchanged = editorWithSelection("ab cd", { line: 0, ch: 0 }, { line: 0, ch: 2 });
-		translate.mockImplementation(async () => {
+		complete.mockImplementation(async () => {
 			unchanged.replaceRange("zz", { line: 0, ch: 0 }, { line: 0, ch: 2 });
-			return result();
+			return "X";
 		});
 		await plugin.translateAndReplaceSelection(unchanged);
 		expect(unchanged.getValue()).toBe("zz cd");
 		expect(Notice.all.some((n) => n.message.includes("nothing was replaced"))).toBe(true);
 
 		jest.useFakeTimers();
-		translate.mockRejectedValue(new Error("HTTP 401: no"));
+		complete.mockRejectedValue(new Error("HTTP 401: no"));
 		const failing = editorWithSelection("ab", { line: 0, ch: 0 }, { line: 0, ch: 2 });
 		await plugin.translateAndReplaceSelection(failing);
 		const notice = Notice.all[Notice.all.length - 1];
@@ -108,15 +109,21 @@ describe("TranslateBlockPlugin", () => {
 		await plugin.translateAndReplaceSelection(editorWithSelection("ab", { line: 0, ch: 1 }, { line: 0, ch: 1 }));
 	});
 
-	it("fetches and stores models, clearing the selection when none come back", async () => {
+	it("fetches and stores models per provider, and across all configured providers", async () => {
 		const plugin = await makePlugin();
 		const list = jest.spyOn(plugin.getBackend(), "listModels").mockResolvedValue(["b", "a"]);
 		await expect(plugin.fetchModels("openrouter")).resolves.toEqual(["b", "a"]);
-		expect(plugin.settings.providers.openrouter.selectedModel).toBe("b");
+		expect(plugin.settings.providers.openrouter.models).toEqual(["b", "a"]);
 		expect(list.mock.calls[0][0]).toMatchObject({ provider: "openrouter", apiKey: "" });
-		list.mockResolvedValue([]);
-		await plugin.fetchModels("openrouter");
-		expect(plugin.settings.providers.openrouter.selectedModel).toBe("");
+
+		// Only Ollama is configured (no keys): one fetch.
+		list.mockClear().mockResolvedValue(["llama3", "gemma"]);
+		await expect(plugin.fetchAllModels()).resolves.toBe("Models fetched. Ollama: 2");
+		expect(list).toHaveBeenCalledTimes(1);
+
+		plugin.setApiKey("openrouter", "k");
+		list.mockClear().mockResolvedValueOnce(["llama3"]).mockRejectedValueOnce(new Error("HTTP 401"));
+		await expect(plugin.fetchAllModels()).resolves.toBe("Models fetched. Ollama: 1 · OpenRouter: HTTP 401");
 	});
 
 	it("keeps API keys in secret storage and never sends one for Ollama", async () => {
@@ -133,24 +140,19 @@ describe("TranslateBlockPlugin", () => {
 		expect(Notice.all[0].message).toContain("locked");
 	});
 
-	it("normalises settings on save", async () => {
+	it("normalises languages on save", async () => {
 		const plugin = await makePlugin();
 		plugin.settings.defaultSourceLang = "bogus";
-		plugin.settings.providers.ollama.selectedModel = "missing";
 		await plugin.saveSettings();
 		expect(plugin.settings.defaultSourceLang).toBe("auto");
-		expect(plugin.settings.providers.ollama.selectedModel).toBe("llama3");
 	});
 
 	it("closes popover and modals on unload", async () => {
 		const plugin = await makePlugin();
-		jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
-		const editor = editorWithSelection("hello", { line: 0, ch: 0 }, { line: 0, ch: 5 });
-		plugin.openQuickTranslate(editor);
+		mockBackend(plugin);
+		plugin.openQuickTranslate(editorWithSelection("hello", { line: 0, ch: 0 }, { line: 0, ch: 5 }));
 		plugin.openQuickTranslate(editorWithSelection("x", { line: 0, ch: 0 }, { line: 0, ch: 0 }));
-		const modalEditor = editorWithSelection("hello", { line: 0, ch: 0 }, { line: 0, ch: 5 });
-		const plugin2 = plugin;
-		plugin2.commands.find((c) => c.id === "open-translate-modal")!.editorCallback!(modalEditor, null);
+		plugin.commands.find((c) => c.id === "open-translate-modal")!.editorCallback!(editorWithSelection("hello", { line: 0, ch: 0 }, { line: 0, ch: 5 }), null);
 		expect(Modal.openInstances).toHaveLength(1);
 		plugin.onunload();
 		expect(document.querySelector(".translate-popover")).toBeNull();
@@ -159,7 +161,7 @@ describe("TranslateBlockPlugin", () => {
 
 	it("anchors the popover to the DOM selection when it has a size", async () => {
 		const plugin = await makePlugin();
-		jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
+		mockBackend(plugin);
 		const range: any = document.createRange();
 		range.getBoundingClientRect = () => ({ left: 100, right: 200, top: 50, bottom: 70, width: 100, height: 20 });
 		jest.spyOn(window, "getSelection").mockReturnValue({ rangeCount: 1, getRangeAt: () => range } as unknown as Selection);

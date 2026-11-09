@@ -17,10 +17,8 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
 export interface ProviderConfig {
 	/** Origin (plus optional path prefix) of the API, without the endpoint path. */
 	baseUrl: string;
-	/** Models available in dropdowns (filled by "Fetch models" or by hand). */
+	/** Models available in dropdowns (filled by "Fetch models"). */
 	models: string[];
-	/** Model used for requests; must be one of `models` when the list is non-empty. */
-	selectedModel: string;
 	/** Extra HTTP headers, one `Key: Value` per line. */
 	extraHeadersRaw: string;
 }
@@ -29,19 +27,16 @@ export const PROVIDER_DEFAULTS: Record<ProviderId, ProviderConfig> = {
 	ollama: {
 		baseUrl: "http://localhost:13434",
 		models: ["llama3"],
-		selectedModel: "llama3",
 		extraHeadersRaw: "",
 	},
 	openrouter: {
 		baseUrl: "https://openrouter.ai",
 		models: [],
-		selectedModel: "",
 		extraHeadersRaw: "",
 	},
 	openwebui: {
 		baseUrl: "http://localhost:3000",
 		models: [],
-		selectedModel: "",
 		extraHeadersRaw: "",
 	},
 };
@@ -60,7 +55,6 @@ export function cloneProviderConfig(config: ProviderConfig): ProviderConfig {
 	return {
 		baseUrl: config.baseUrl,
 		models: [...config.models],
-		selectedModel: config.selectedModel,
 		extraHeadersRaw: config.extraHeadersRaw,
 	};
 }

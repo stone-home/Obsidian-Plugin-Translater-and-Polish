@@ -1,6 +1,5 @@
 import { requestUrl } from "obsidian";
-import { HttpTranslationBackend, buildSystemPrompt, withTimeout } from "../translation-backend";
-import { STRUCTURED_PROMPT_SUFFIX } from "../response-parser";
+import { HttpTranslationBackend, renderPrompt, withTimeout } from "../translation-backend";
 
 const mockedRequest = requestUrl as unknown as jest.Mock;
 
@@ -20,23 +19,11 @@ function brokenJsonResponse(status: number, text: string) {
 
 const base = { apiKey: "", extraHeadersRaw: "", timeoutMs: 0, debug: false };
 
-describe("buildSystemPrompt", () => {
-	it("appends the structured suffix and substitutes placeholders", () => {
-		const prompt = buildSystemPrompt("Translate from {{sourceLang}} to {{targetLang}}.", "zh", "en");
-		expect(prompt.startsWith("Translate from zh to en.")).toBe(true);
-		expect(prompt).toContain("### DIRECT");
-		expect(prompt).not.toContain("{{targetLang}}");
-	});
-
-	it("maps auto to the detected language and does not double the suffix", () => {
-		const custom = `From {{sourceLang}}.\n${STRUCTURED_PROMPT_SUFFIX}`;
-		const prompt = buildSystemPrompt(custom, "auto", "en");
-		expect(prompt).toContain("the detected language");
-		expect(prompt.match(/### DIRECT/g)).toHaveLength(1);
-	});
-
-	it("falls back to the default prompt when empty", () => {
-		expect(buildSystemPrompt("", "en", "zh")).toContain("professional translator");
+describe("renderPrompt", () => {
+	it("substitutes placeholders and maps auto to a usable phrase", () => {
+		expect(renderPrompt("From {{sourceLang}} to {{targetLang}}.", "zh", "en")).toBe("From zh to en.");
+		expect(renderPrompt("In {{sourceLang}}.", "auto", "en")).toBe("In the language of the text.");
+		expect(renderPrompt("{{sourceLang}}/{{targetLang}}", "", "")).toBe("the language of the text/en");
 	});
 });
 
@@ -65,43 +52,29 @@ describe("withTimeout", () => {
 	});
 });
 
-describe("HttpTranslationBackend.translate", () => {
+describe("HttpTranslationBackend.complete", () => {
 	const backend = new HttpTranslationBackend();
 	beforeEach(() => mockedRequest.mockReset());
 
-	it("posts an Ollama chat request and parses the sections", async () => {
-		mockedRequest.mockResolvedValue(
-			response(200, { message: { content: "### DIRECT\nHi\n### NATIVE\nHey\n### SUGGESTIONS\n- none" } }),
-		);
-		const parsed = await backend.translate("你好", "zh", "en", {
-			...base,
-			provider: "ollama",
-			baseUrl: "http://localhost:13434/",
-			model: "llama3",
-			prompt: "",
-			debug: true,
-		});
-		expect(parsed.directTranslation).toBe("Hi");
-		expect(parsed.nativeRewrite).toBe("Hey");
+	it("posts an Ollama chat request and returns the content", async () => {
+		mockedRequest.mockResolvedValue(response(200, { message: { content: "  Hi  " } }));
+		const reply = await backend.complete("SYS", "你好", { ...base, provider: "ollama", baseUrl: "http://localhost:13434/", model: "llama3", debug: true });
+		expect(reply).toBe("Hi");
 		const call = mockedRequest.mock.calls[0][0];
 		expect(call.url).toBe("http://localhost:13434/api/chat");
 		const body = JSON.parse(call.body);
 		expect(body.stream).toBe(false);
-		expect(body.messages[1]).toEqual({ role: "user", content: "你好" });
+		expect(body.messages).toEqual([
+			{ role: "system", content: "SYS" },
+			{ role: "user", content: "你好" },
+		]);
 		expect(call.headers.Authorization).toBeUndefined();
 	});
 
 	it("posts an OpenAI-style request for OpenRouter with auth headers", async () => {
 		mockedRequest.mockResolvedValue(response(200, { choices: [{ message: { content: "Bonjour" } }] }));
-		const parsed = await backend.translate("Hello", "en", "fr", {
-			...base,
-			provider: "openrouter",
-			baseUrl: "",
-			apiKey: "sk-1",
-			model: "a/b",
-			prompt: "p",
-		});
-		expect(parsed.directTranslation).toBe("Bonjour");
+		const reply = await backend.complete("S", "Hello", { ...base, provider: "openrouter", baseUrl: "", apiKey: "sk-1", model: "a/b" });
+		expect(reply).toBe("Bonjour");
 		const call = mockedRequest.mock.calls[0][0];
 		expect(call.url).toBe("https://openrouter.ai/api/v1/chat/completions");
 		expect(JSON.parse(call.body).temperature).toBe(0.2);
@@ -111,27 +84,19 @@ describe("HttpTranslationBackend.translate", () => {
 
 	it("throws on HTTP errors with a body snippet", async () => {
 		mockedRequest.mockResolvedValue(response(401, { error: "bad key" }));
-		await expect(
-			backend.translate("x", "en", "fr", { ...base, provider: "openwebui", baseUrl: "http://w", model: "m", prompt: "" }),
-		).rejects.toThrow(/HTTP 401: .*bad key/);
+		await expect(backend.complete("S", "x", { ...base, provider: "openwebui", baseUrl: "http://w", model: "m" })).rejects.toThrow(/HTTP 401: .*bad key/);
 	});
 
 	it("reports non-JSON bodies readably", async () => {
 		mockedRequest.mockResolvedValue(brokenJsonResponse(200, "<html>login</html>"));
-		await expect(
-			backend.translate("x", "en", "fr", { ...base, provider: "openwebui", baseUrl: "http://w", model: "m", prompt: "" }),
-		).rejects.toThrow("response was not JSON");
+		await expect(backend.complete("S", "x", { ...base, provider: "openwebui", baseUrl: "http://w", model: "m" })).rejects.toThrow("response was not JSON");
 	});
 
 	it("throws when the reply has no content", async () => {
 		mockedRequest.mockResolvedValue(response(200, { choices: [] }));
-		await expect(
-			backend.translate("x", "en", "fr", { ...base, provider: "openrouter", baseUrl: "", model: "m", prompt: "" }),
-		).rejects.toThrow("No content");
+		await expect(backend.complete("S", "x", { ...base, provider: "openrouter", baseUrl: "", model: "m" })).rejects.toThrow("No content");
 		mockedRequest.mockResolvedValue(response(200, { message: { content: 42 } }));
-		await expect(
-			backend.translate("x", "en", "fr", { ...base, provider: "ollama", baseUrl: "", model: "m", prompt: "" }),
-		).rejects.toThrow("No content");
+		await expect(backend.complete("S", "x", { ...base, provider: "ollama", baseUrl: "", model: "m" })).rejects.toThrow("No content");
 	});
 });
 
@@ -144,7 +109,6 @@ describe("HttpTranslationBackend.listModels", () => {
 		await expect(backend.listModels({ ...base, provider: "ollama", baseUrl: "http://o" })).resolves.toEqual(["a", "b"]);
 		expect(mockedRequest.mock.calls[0][0].url).toBe("http://o/api/tags");
 		expect(mockedRequest.mock.calls[0][0].method).toBe("GET");
-
 		mockedRequest.mockResolvedValueOnce(response(200, { data: [{ id: "z" }] }));
 		await expect(backend.listModels({ ...base, provider: "openwebui", baseUrl: "http://w" })).resolves.toEqual(["z"]);
 	});

@@ -1,5 +1,5 @@
 import { Modal, Notice } from "obsidian";
-import { editorWithSelection, flush, makePlugin, result } from "../../test/helpers";
+import { editorWithSelection, flush, makePlugin, mockBackend } from "../../test/helpers";
 import { QuickTranslatePopover } from "../quick-translate-popover";
 import type TranslateBlockPlugin from "../main";
 
@@ -7,11 +7,11 @@ const anchor = { left: 100, right: 200, top: 100, bottom: 120 };
 
 describe("QuickTranslatePopover", () => {
 	let plugin: TranslateBlockPlugin;
-	let translate: jest.SpyInstance;
+	let complete: jest.SpyInstance;
 
 	beforeEach(async () => {
 		plugin = await makePlugin();
-		translate = jest.spyOn(plugin.getBackend(), "translate").mockResolvedValue(result());
+		complete = mockBackend(plugin);
 	});
 	afterEach(() => {
 		QuickTranslatePopover.closeCurrent();
@@ -27,18 +27,34 @@ describe("QuickTranslatePopover", () => {
 		return { popover, el, editor };
 	}
 
-	it("renders the direct translation below the anchor and switches variants", async () => {
+	const body = (el: HTMLElement) => el.querySelector(".translate-popover-body")!;
+	const status = (el: HTMLElement) => el.querySelector(".translate-popover-status")!;
+
+	it("shows the translation first and fetches the rewrite only on demand", async () => {
 		const { el } = open();
-		expect(el.querySelector(".translate-popover-status")!.textContent).toBe("Translating…");
+		expect(status(el).textContent).toBe("Translating…");
 		expect(el.style.left).toBe("100px");
 		expect(el.style.top).toBe("126px");
 		await flush();
-		expect(el.querySelector(".translate-popover-body")!.textContent).toBe("Direct text.");
-		expect(el.querySelector(".translate-popover-status")!.getAttribute("style")).toContain("none");
+		expect(body(el).textContent).toBe("Direct text.");
+		expect(status(el).getAttribute("style")).toContain("none");
+		expect(complete).toHaveBeenCalledTimes(1);
+
 		const select = el.querySelector<HTMLSelectElement>("select")!;
 		select.value = "native";
 		select.dispatchEvent(new Event("change"));
-		expect(el.querySelector(".translate-popover-body")!.textContent).toBe("Native text.");
+		expect(body(el).textContent).toBe("—");
+		expect(status(el).textContent).toBe("Rewriting…");
+		await flush();
+		expect(complete).toHaveBeenCalledTimes(2);
+		expect(body(el).textContent).toBe("Native text.");
+
+		select.value = "direct";
+		select.dispatchEvent(new Event("change"));
+		select.value = "native";
+		select.dispatchEvent(new Event("change"));
+		await flush();
+		expect(complete).toHaveBeenCalledTimes(2);
 		expect(plugin.app.keymap.stack).toHaveLength(1);
 	});
 
@@ -51,17 +67,19 @@ describe("QuickTranslatePopover", () => {
 		expect(parseInt(far.style.top, 10)).toBe(10);
 	});
 
-	it("forces the direct variant when there is no native rewrite and shows errors", async () => {
-		translate.mockResolvedValueOnce(result({ nativeRewrite: "" }));
+	it("shows errors per task", async () => {
+		complete.mockRestore();
+		mockBackend(plugin, new Error("HTTP 401"), new Error("HTTP 400"));
 		const { el } = open();
 		await flush();
-		expect(el.querySelector<HTMLSelectElement>("select")!.value).toBe("direct");
-		translate.mockRejectedValueOnce(new Error("HTTP 401"));
-		const second = open();
+		expect(status(el).textContent).toContain("HTTP 401");
+		expect(status(el).hasClass("is-error")).toBe(true);
+		expect(body(el).textContent).toBe("—");
+		const select = el.querySelector<HTMLSelectElement>("select")!;
+		select.value = "native";
+		select.dispatchEvent(new Event("change"));
 		await flush();
-		expect(second.el.querySelector(".translate-popover-status")!.textContent).toContain("HTTP 401");
-		expect(second.el.querySelector(".translate-popover-status")!.hasClass("is-error")).toBe(true);
-		expect(second.el.querySelector(".translate-popover-body")!.textContent).toBe("");
+		expect(status(el).textContent).toContain("Native rewrite failed: HTTP 400");
 	});
 
 	it("copies and opens the full window", async () => {
@@ -90,7 +108,7 @@ describe("QuickTranslatePopover", () => {
 	it("closes on Escape, outside click, scroll, resize and leaf change, but not inside interactions", async () => {
 		const { el, popover } = open();
 		el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-		el.querySelector(".translate-popover-body")!.dispatchEvent(new Event("scroll", { bubbles: true }));
+		body(el).dispatchEvent(new Event("scroll", { bubbles: true }));
 		expect(document.querySelector(".translate-popover")).not.toBeNull();
 		expect((popover as any).scope.fire("Escape")).toBe(true);
 		expect(document.querySelector(".translate-popover")).toBeNull();
@@ -114,13 +132,13 @@ describe("QuickTranslatePopover", () => {
 	});
 
 	it("drops a late result after closing", async () => {
-		let resolve: (r: any) => void = () => undefined;
-		translate.mockImplementationOnce(() => new Promise((res) => (resolve = res)));
+		let resolve: (r: string) => void = () => undefined;
+		complete.mockImplementationOnce(() => new Promise<string>((res) => (resolve = res)));
 		const { popover, el } = open();
 		popover.close();
-		resolve(result());
+		resolve("late");
 		await flush();
-		expect(el.querySelector(".translate-popover-body")!.textContent).toBe("");
+		expect(body(el).textContent).toBe("");
 	});
 
 	it("keeps only one popover open", async () => {

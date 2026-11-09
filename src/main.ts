@@ -1,14 +1,13 @@
 import { Editor, Menu, Notice, Plugin } from "obsidian";
 import { freshDefaultSettings } from "./defaults";
 import { resolveLanguage } from "./languages";
-import { resolveModel } from "./models";
-import { PROVIDER_LABELS, ProviderConfig, ProviderId, providerUsesApiKey, secretId } from "./providers";
+import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId, providerUsesApiKey, secretId } from "./providers";
 import { PopoverAnchor, QuickTranslatePopover } from "./quick-translate-popover";
 import { DEFAULT_SETTINGS, TranslateBlockSettingTab, TranslateBlockSettings } from "./settings";
 import { migrateSettings } from "./settings-migration";
 import { TranslateModal } from "./translate-modal";
 import { ProviderRequest, TranslationBackend, createDefaultBackend } from "./translation-backend";
-import { runTranslationJob } from "./translation-job";
+import { runTranslate } from "./translation-job";
 
 export default class TranslateBlockPlugin extends Plugin {
 	settings: TranslateBlockSettings = freshDefaultSettings();
@@ -134,7 +133,7 @@ export default class TranslateBlockPlugin extends Plugin {
 		const from = editor.getCursor("from");
 		const to = editor.getCursor("to");
 		const notice = new Notice("Translating…", 0);
-		await runTranslationJob(
+		await runTranslate(
 			this,
 			{
 				sourceText: selection,
@@ -149,7 +148,7 @@ export default class TranslateBlockPlugin extends Plugin {
 						new Notice("Selection changed while translating; nothing was replaced.");
 						return;
 					}
-					editor.replaceRange(result.directTranslation, from, to);
+					editor.replaceRange(result, from, to);
 					notice.hide();
 				},
 				onError: (message) => {
@@ -169,11 +168,6 @@ export default class TranslateBlockPlugin extends Plugin {
 		return this.backend;
 	}
 
-	getActiveProvider(): { id: ProviderId; config: ProviderConfig } {
-		const id = this.settings.activeProvider;
-		return { id, config: this.settings.providers[id] };
-	}
-
 	getApiKey(id: ProviderId): string {
 		return this.app.secretStorage.getSecret(secretId(id)) ?? "";
 	}
@@ -189,7 +183,7 @@ export default class TranslateBlockPlugin extends Plugin {
 		}
 	}
 
-	/** Request fields shared by translate and list-models calls for a provider. */
+	/** Request fields shared by completion and list-models calls for a provider. */
 	buildProviderRequest(id: ProviderId): ProviderRequest {
 		const config = this.settings.providers[id];
 		return {
@@ -205,11 +199,27 @@ export default class TranslateBlockPlugin extends Plugin {
 	/** Fetches the provider's model list, stores it, and returns it. Throws on failure. */
 	async fetchModels(id: ProviderId): Promise<string[]> {
 		const models = await this.getBackend().listModels(this.buildProviderRequest(id));
-		const config = this.settings.providers[id];
-		config.models = models;
-		config.selectedModel = models.length > 0 ? resolveModel(models, config.selectedModel) : "";
+		this.settings.providers[id].models = models;
 		await this.saveSettings();
 		return models;
+	}
+
+	/**
+	 * Fetches models from every provider that is configured (Ollama always; the
+	 * others when an API key is set). Failures are collected, not thrown.
+	 */
+	async fetchAllModels(): Promise<string> {
+		const parts: string[] = [];
+		for (const id of PROVIDER_IDS) {
+			if (providerUsesApiKey(id) && !this.getApiKey(id)) continue;
+			try {
+				const models = await this.fetchModels(id);
+				parts.push(`${PROVIDER_LABELS[id]}: ${models.length}`);
+			} catch (error) {
+				parts.push(`${PROVIDER_LABELS[id]}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+		return parts.length > 0 ? `Models fetched. ${parts.join(" · ")}` : "No provider is configured yet.";
 	}
 
 	// ---------------------------------------------------------------- settings
@@ -226,10 +236,6 @@ export default class TranslateBlockPlugin extends Plugin {
 	}
 
 	async saveSettings() {
-		const { config } = this.getActiveProvider();
-		if (config.models.length > 0) {
-			config.selectedModel = resolveModel(config.models, config.selectedModel);
-		}
 		this.settings.defaultSourceLang = resolveLanguage(
 			this.settings.defaultSourceLang,
 			DEFAULT_SETTINGS.defaultSourceLang,

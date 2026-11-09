@@ -177,3 +177,14 @@
 .translate-popover-status.is-error {
   color: var(--text-error);
 }
+
+.translate-modal-task {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.translate-modal-task-label {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
