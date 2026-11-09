@@ -1,11 +1,11 @@
 /**
- * Parses the three-section model reply (direct translation, native polish,
- * suggestions). Pure module (no `obsidian` import).
+ * Parses the three-section model reply (translation, native rewrite of the
+ * source text, suggestions). Pure module (no `obsidian` import).
  */
 
 export interface StructuredTranslation {
 	directTranslation: string;
-	nativePolish: string;
+	nativeRewrite: string;
 	suggestions: string[];
 	raw: string;
 }
@@ -24,13 +24,13 @@ export const STRUCTURED_PROMPT_SUFFIX = [
 	"Format your entire reply with exactly these three sections and nothing else:",
 	"",
 	SECTION_MARKERS.direct,
-	"A faithful, standard translation of the text into {{targetLang}}.",
+	"A faithful translation of the text into {{targetLang}}.",
 	"",
 	SECTION_MARKERS.native,
-	"The same content rewritten the way a native {{targetLang}} speaker would naturally phrase it, keeping the meaning and tone.",
+	"The original text rewritten in its own language ({{sourceLang}}), exactly as a fluent native speaker would phrase it, keeping the meaning and tone. Do not translate this section.",
 	"",
 	SECTION_MARKERS.suggestions,
-	'At most five short bullet points about grammar, word choice or style in the source text. Write "- none" if there is nothing to note.',
+	'At most five short bullet points explaining what the rewrite changed and why (grammar, word choice, idiom, tone), so the writer can learn from it. Write "- none" if nothing needed changing.',
 ].join("\n");
 
 type SectionKey = "direct" | "native" | "suggestions";
@@ -102,7 +102,7 @@ export function parseStructuredResponse(rawInput: string): StructuredTranslation
 
 	const anyMarker = seen.direct || seen.native || seen.suggestions;
 	if (!anyMarker) {
-		return { directTranslation: text.trim(), nativePolish: "", suggestions: [], raw };
+		return { directTranslation: text.trim(), nativeRewrite: "", suggestions: [], raw };
 	}
 
 	const direct = sections.direct.join("\n").trim();
@@ -112,7 +112,7 @@ export function parseStructuredResponse(rawInput: string): StructuredTranslation
 
 	return {
 		directTranslation: seen.direct && direct ? direct : fallbackDirect,
-		nativePolish: native,
+		nativeRewrite: native,
 		suggestions,
 		raw,
 	};

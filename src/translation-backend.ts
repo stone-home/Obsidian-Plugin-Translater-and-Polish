@@ -135,7 +135,7 @@ export class HttpTranslationBackend implements TranslationBackend {
 		const parsed = parseStructuredResponse(content);
 		debugLog(request, "Parsed sections:", {
 			direct: parsed.directTranslation.length,
-			native: parsed.nativePolish.length,
+			native: parsed.nativeRewrite.length,
 			suggestions: parsed.suggestions.length,
 		});
 		return parsed;

@@ -82,7 +82,7 @@ describe("HttpTranslationBackend.translate", () => {
 			debug: true,
 		});
 		expect(parsed.directTranslation).toBe("Hi");
-		expect(parsed.nativePolish).toBe("Hey");
+		expect(parsed.nativeRewrite).toBe("Hey");
 		const call = mockedRequest.mock.calls[0][0];
 		expect(call.url).toBe("http://localhost:13434/api/chat");
 		const body = JSON.parse(call.body);

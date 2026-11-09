@@ -1,13 +1,13 @@
 # Obsidian Translate Block
 
-Translate and polish selected text inside Obsidian using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
+Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
 
-Select text in a note, then either peek at a translation in a small bubble or open the translate & polish window to rewrite the text and put the result back into the note.
+Write in a language that is not your first, select the passage, and the plugin gives you two things: a translation into your target language so you can check the meaning, and a rewrite of your original text the way a native speaker would phrase it, with notes on what changed. Either result can be put back into the note.
 
 ## Features
 
 - **Quick translate** — a read-only bubble next to the selection. Switch between the direct translation and the native-speaker version, copy it, or jump to the full window. Esc, clicking outside, scrolling or changing panes closes it.
-- **Translate & polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native polish*, *Direct translation* and *Suggestions*. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
+- **Translate & polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native rewrite of your text* (same language as the input), *Translation* and *Suggestions* explaining what the rewrite changed. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
 - **Translate and replace selection** — no window; the selection is replaced with the direct translation.
 - **Three providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
 

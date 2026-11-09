@@ -51,8 +51,8 @@ describe("QuickTranslatePopover", () => {
 		expect(parseInt(far.style.top, 10)).toBe(10);
 	});
 
-	it("forces the direct variant when there is no native polish and shows errors", async () => {
-		translate.mockResolvedValueOnce(result({ nativePolish: "" }));
+	it("forces the direct variant when there is no native rewrite and shows errors", async () => {
+		translate.mockResolvedValueOnce(result({ nativeRewrite: "" }));
 		const { el } = open();
 		await flush();
 		expect(el.querySelector<HTMLSelectElement>("select")!.value).toBe("direct");

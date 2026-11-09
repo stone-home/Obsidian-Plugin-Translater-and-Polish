@@ -214,10 +214,10 @@ export class TranslateModal extends Modal {
 	}
 
 	private buildResultColumn(column: HTMLElement): void {
-		const native = this.buildCard(column, "native", "Native polish");
+		const native = this.buildCard(column, "native", "Native rewrite of your text");
 		this.nativeCard = native.card;
 		this.nativeBody = native.body;
-		const direct = this.buildCard(column, "direct", "Direct translation");
+		const direct = this.buildCard(column, "direct", "Translation");
 		this.directCard = direct.card;
 		this.directBody = direct.body;
 
@@ -299,7 +299,7 @@ export class TranslateModal extends Modal {
 
 	private renderResult(result: StructuredTranslation, sourceLength: number): void {
 		this.result = result;
-		this.nativeBody.setText(result.nativePolish || "—");
+		this.nativeBody.setText(result.nativeRewrite || "—");
 		this.directBody.setText(result.directTranslation || "—");
 
 		this.suggestionsList.empty();
@@ -313,7 +313,7 @@ export class TranslateModal extends Modal {
 			this.suggestionsEl.hide();
 		}
 
-		if (!result.nativePolish && this.chosen === "native") {
+		if (!result.nativeRewrite && this.chosen === "native") {
 			this.chosen = "direct";
 		}
 		this.updateChosenHighlight();
@@ -330,8 +330,8 @@ export class TranslateModal extends Modal {
 
 	private chosenText(): string {
 		if (!this.result) return "";
-		return this.chosen === "native" && this.result.nativePolish
-			? this.result.nativePolish
+		return this.chosen === "native" && this.result.nativeRewrite
+			? this.result.nativeRewrite
 			: this.result.directTranslation;
 	}
 

@@ -156,7 +156,7 @@ describe("TranslateModal", () => {
 		await flush();
 		let resolveSlow: (r: any) => void = () => undefined;
 		translate.mockImplementationOnce(() => new Promise((res) => (resolveSlow = res)));
-		translate.mockResolvedValueOnce(result({ directTranslation: "fast", nativePolish: "", suggestions: [] }));
+		translate.mockResolvedValueOnce(result({ directTranslation: "fast", nativeRewrite: "", suggestions: [] }));
 		(modal as any).run();
 		(modal as any).run();
 		await flush();

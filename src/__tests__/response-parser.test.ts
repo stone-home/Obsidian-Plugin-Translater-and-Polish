@@ -15,7 +15,7 @@ describe("parseStructuredResponse", () => {
 		].join("\n");
 		const result = parseStructuredResponse(raw);
 		expect(result.directTranslation).toBe("I read this plan.");
-		expect(result.nativePolish).toBe("I've gone through the plan.");
+		expect(result.nativeRewrite).toBe("I've gone through the plan.");
 		expect(result.suggestions).toEqual(['Prefer "assumption" over "premise".', "Merge the two clauses."]);
 		expect(result.raw).toBe(raw);
 	});
@@ -23,7 +23,7 @@ describe("parseStructuredResponse", () => {
 	it("falls back to the whole text when no markers are present", () => {
 		const result = parseStructuredResponse("  Just a plain translation.\n");
 		expect(result.directTranslation).toBe("Just a plain translation.");
-		expect(result.nativePolish).toBe("");
+		expect(result.nativeRewrite).toBe("");
 		expect(result.suggestions).toEqual([]);
 	});
 
@@ -38,7 +38,7 @@ describe("parseStructuredResponse", () => {
 		].join("\n");
 		const result = parseStructuredResponse(raw);
 		expect(result.directTranslation).toBe("Literal version.");
-		expect(result.nativePolish).toBe("Natural version.");
+		expect(result.nativeRewrite).toBe("Natural version.");
 		expect(result.suggestions).toEqual([]);
 	});
 
@@ -46,7 +46,7 @@ describe("parseStructuredResponse", () => {
 		const raw = "```markdown\r\n### DIRECT\r\nHello.\r\n### NATIVE\r\nHi there.\r\n### SUGGESTIONS\r\n- none\r\n```";
 		const result = parseStructuredResponse(raw);
 		expect(result.directTranslation).toBe("Hello.");
-		expect(result.nativePolish).toBe("Hi there.");
+		expect(result.nativeRewrite).toBe("Hi there.");
 	});
 
 	it("uses the preamble, then native, when the DIRECT section is missing", () => {
@@ -79,6 +79,6 @@ describe("heading detection", () => {
 	it("ignores a bare label line inside a section", () => {
 		const result = parseStructuredResponse("### DIRECT\nDirect\nNative\n### NATIVE\nOk.");
 		expect(result.directTranslation).toBe("Direct\nNative");
-		expect(result.nativePolish).toBe("Ok.");
+		expect(result.nativeRewrite).toBe("Ok.");
 	});
 });

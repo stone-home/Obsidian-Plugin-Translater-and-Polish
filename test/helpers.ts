@@ -5,7 +5,7 @@ import { StructuredTranslation } from "../src/response-parser";
 export function result(partial: Partial<StructuredTranslation> = {}): StructuredTranslation {
 	return {
 		directTranslation: "Direct text.",
-		nativePolish: "Native text.",
+		nativeRewrite: "Native text.",
 		suggestions: ["tighten it"],
 		raw: "raw",
 		...partial,

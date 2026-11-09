@@ -95,8 +95,8 @@ export class QuickTranslatePopover {
 			text: `${this.plugin.settings.defaultSourceLang} → ${this.plugin.settings.defaultTargetLang}`,
 		});
 		this.variantSelect = header.createEl("select", { cls: "dropdown translate-popover-variant" });
-		this.variantSelect.createEl("option", { value: "direct", text: "Direct" });
-		this.variantSelect.createEl("option", { value: "native", text: "Native polish" });
+		this.variantSelect.createEl("option", { value: "direct", text: "Translation" });
+		this.variantSelect.createEl("option", { value: "native", text: "Native rewrite" });
 		this.variantSelect.addEventListener("change", () => {
 			this.variant = this.variantSelect.value as Variant;
 			this.renderBody();
@@ -146,7 +146,7 @@ export class QuickTranslatePopover {
 				onStatus: (message) => this.statusEl.setText(message),
 				onResult: (result) => {
 					this.result = result;
-					if (!result.nativePolish) {
+					if (!result.nativeRewrite) {
 						this.variantSelect.value = "direct";
 						this.variant = "direct";
 					}
@@ -166,8 +166,8 @@ export class QuickTranslatePopover {
 
 	private currentText(): string {
 		if (!this.result) return "";
-		return this.variant === "native" && this.result.nativePolish
-			? this.result.nativePolish
+		return this.variant === "native" && this.result.nativeRewrite
+			? this.result.nativeRewrite
 			: this.result.directTranslation;
 	}
 
