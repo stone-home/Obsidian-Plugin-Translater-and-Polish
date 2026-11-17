@@ -10,7 +10,7 @@ History (verified from git):
 
 - 1.0 (March 2026): a fenced `translate-block` code block with Auto polling and Save to block. See [[TP - Requirement - Translate block]] and [[TP - Requirement - Translate block fence escape and input UX]].
 - 1.1.0 (2026-07-22, `94d71dc`): a translate side panel and a shared model list. See [[TP - Requirement - Translate panel and model list]] and [[TP - Plan - Translate panel and model list]].
-- 2.0 (`06d9725`, 2026-11-09): selection-based Quick translate popover, Translate and polish window, replace-selection command and context menu; three providers with API keys in `app.secretStorage`; 1.x settings migrated into the Ollama provider. It removed the code block, side panel and polling. `minAppVersion` is 1.11.4. As of this update no release commit follows `06d9725`, so `manifest.json` and `package.json` still read 1.1.0.
+- 2.0 (`06d9725`, 2026-11-09): selection-based Quick translate popover, Translate and polish window, replace-selection command and context menu; three providers with API keys in `app.secretStorage`; 1.x settings migrated into the Ollama provider. It removed the code block, side panel and polling. `minAppVersion` is 1.11.4. Released as 2.0.0 by semantic-release (`69975ab`, 2026-11-09).
 
 ## Definitions and decisions
 
