@@ -1,0 +1,31 @@
+{
+  "extraKnownMarketplaces": {
+    "stone-home-skills": {
+      "source": {
+        "source": "directory",
+        "path": "./.skills-hub"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ai-homelab-highest-court@stone-home-skills": true,
+    "ai-homelab-program@stone-home-skills": true,
+    "ai-homelab-python@stone-home-skills": false,
+    "ai-homelab-go@stone-home-skills": false,
+    "ai-homelab-bash@stone-home-skills": false,
+    "ai-homelab-nodejs@stone-home-skills": true,
+    "ai-homelab-obsidian@stone-home-skills": true,
+    "ai-homelab-devops@stone-home-skills": false,
+    "ai-homelab-homelab@stone-home-skills": false,
+    "ai-homelab-research@stone-home-skills": false,
+    "ai-homelab-pkm@stone-home-skills": false,
+    "ai-homelab-pm@stone-home-skills": true,
+    "ai-homelab-docs@stone-home-skills": false,
+    "ai-homelab-english@stone-home-skills": false,
+    "ai-homelab-ui-design@stone-home-skills": false,
+    "ai-homelab-roundtable@stone-home-skills": false,
+    "ai-homelab-cloud-infra@stone-home-skills": false,
+    "ai-homelab-prompting@stone-home-skills": false,
+    "ai-homelab-ai-engineer@stone-home-skills": false
+  }
+}

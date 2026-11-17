@@ -1,13 +1,18 @@
-import { PROVIDER_DEFAULTS, ProviderConfig, ProviderId, cloneProviderConfig } from "./providers";
+import {
+	PROVIDER_DEFAULTS,
+	ProviderConfig,
+	ProviderId,
+	cloneProviderConfig,
+} from './providers';
 
 export const SETTINGS_VERSION = 3;
 
 /** The two model-backed jobs the plugin runs. Each is bound to its own provider + model. */
-export type TaskId = "translate" | "rewrite";
-export const TASK_IDS: readonly TaskId[] = ["translate", "rewrite"];
+export type TaskId = 'translate' | 'rewrite';
+export const TASK_IDS: readonly TaskId[] = ['translate', 'rewrite'];
 export const TASK_LABELS: Record<TaskId, string> = {
-	translate: "Translation",
-	rewrite: "Native rewrite",
+	translate: 'Translation',
+	rewrite: 'Native rewrite',
 };
 
 export interface TaskBinding {
@@ -39,7 +44,7 @@ export interface TranslatePolishSettings {
 
 /** Default prompt shipped with 1.x; migrated to the new default when still unchanged. */
 export const LEGACY_DEFAULT_PROMPT =
-	"You are a translator. The user's next message is the exact text to translate. Translate it from {{sourceLang}} to {{targetLang}}. Reply with nothing but the translated text—no explanations, no \"please provide\" or meta-commentary.";
+	'You are a translator. The user\'s next message is the exact text to translate. Translate it from {{sourceLang}} to {{targetLang}}. Reply with nothing but the translated text—no explanations, no "please provide" or meta-commentary.';
 
 /** Default prompts shipped with 2.0 pre-release builds (settings v2); also migrated when unchanged. */
 export const V2_DEFAULT_PROMPTS = [
@@ -63,8 +68,14 @@ export function defaultProviders(): Record<ProviderId, ProviderConfig> {
 
 export function defaultTasks(): Record<TaskId, TaskBinding> {
 	return {
-		translate: { provider: "ollama", model: PROVIDER_DEFAULTS.ollama.models[0] ?? "" },
-		rewrite: { provider: "ollama", model: PROVIDER_DEFAULTS.ollama.models[0] ?? "" },
+		translate: {
+			provider: 'ollama',
+			model: PROVIDER_DEFAULTS.ollama.models[0] ?? '',
+		},
+		rewrite: {
+			provider: 'ollama',
+			model: PROVIDER_DEFAULTS.ollama.models[0] ?? '',
+		},
 	};
 }
 
@@ -74,8 +85,8 @@ export const DEFAULT_SETTINGS: TranslatePolishSettings = {
 	tasks: defaultTasks(),
 	translatePrompt: DEFAULT_TRANSLATE_PROMPT,
 	rewritePrompt: DEFAULT_REWRITE_PROMPT,
-	defaultSourceLang: "auto",
-	defaultTargetLang: "en",
+	defaultSourceLang: 'auto',
+	defaultTargetLang: 'en',
 	liveDelayMs: 800,
 	maxAttempts: 3,
 	timeoutMs: 20000,
@@ -85,5 +96,9 @@ export const DEFAULT_SETTINGS: TranslatePolishSettings = {
 
 /** Fresh deep copy so callers never mutate the shared defaults. */
 export function freshDefaultSettings(): TranslatePolishSettings {
-	return { ...DEFAULT_SETTINGS, providers: defaultProviders(), tasks: defaultTasks() };
+	return {
+		...DEFAULT_SETTINGS,
+		providers: defaultProviders(),
+		tasks: defaultTasks(),
+	};
 }

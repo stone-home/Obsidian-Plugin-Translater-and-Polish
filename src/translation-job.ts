@@ -1,14 +1,14 @@
-import { TASK_LABELS, TaskId } from "./defaults";
-import type TranslatePolishPlugin from "./main";
-import { PROVIDER_LABELS } from "./providers";
+import { TASK_LABELS, TaskId } from './defaults';
+import type TranslatePolishPlugin from './main';
+import { PROVIDER_LABELS } from './providers';
 import {
 	REWRITE_PROMPT_SUFFIX,
 	RewriteResult,
 	SECTION_MARKERS,
 	parseRewriteResponse,
 	parseTranslationResponse,
-} from "./response-parser";
-import { renderPrompt } from "./translation-backend";
+} from './response-parser';
+import { renderPrompt } from './translation-backend';
 
 export interface TaskInput {
 	sourceText: string;
@@ -29,17 +29,26 @@ export interface StaleSignal {
 
 export function isSoftErrorMessage(message: string): boolean {
 	const lower = message.toLowerCase();
-	if (lower.includes("timeout") || lower.includes("network")) return true;
-	if (/net::|err_|econn|etimedout|fetch failed|socket hang up/.test(lower)) return true;
+	if (lower.includes('timeout') || lower.includes('network')) return true;
+	if (/net::|err_|econn|etimedout|fetch failed|socket hang up/.test(lower))
+		return true;
 	return /\b50[0234]\b/.test(lower);
 }
 
 const RETRY_DELAY_MS = 300;
 
 /** System prompt for a task, with the rewrite format appended when the user's prompt lacks it. */
-export function buildTaskPrompt(plugin: TranslatePolishPlugin, task: TaskId, input: TaskInput): string {
-	if (task === "translate") {
-		return renderPrompt(plugin.settings.translatePrompt.trim(), input.sourceLang, input.targetLang);
+export function buildTaskPrompt(
+	plugin: TranslatePolishPlugin,
+	task: TaskId,
+	input: TaskInput
+): string {
+	if (task === 'translate') {
+		return renderPrompt(
+			plugin.settings.translatePrompt.trim(),
+			input.sourceLang,
+			input.targetLang
+		);
 	}
 	let template = plugin.settings.rewritePrompt.trim();
 	if (!template.toUpperCase().includes(SECTION_MARKERS.native)) {
@@ -58,35 +67,40 @@ export async function runTask(
 	task: TaskId,
 	input: TaskInput,
 	callbacks: TaskCallbacks<string>,
-	signal?: StaleSignal,
+	signal?: StaleSignal
 ): Promise<string | undefined> {
 	const stale = (): boolean => signal?.isStale() ?? false;
 	const text = input.sourceText;
 
 	if (text.trim().length === 0) {
-		callbacks.onError("No source text.");
+		callbacks.onError('No source text.');
 		return undefined;
 	}
 	if (text.length > plugin.settings.maxChars) {
-		callbacks.onError(`Text too long (${text.length} chars). Reduce it or raise the max text size in settings.`);
+		callbacks.onError(
+			`Text too long (${text.length} chars). Reduce it or raise the max text size in settings.`
+		);
 		return undefined;
 	}
 
 	const binding = plugin.settings.tasks[task];
 	if (!binding.model) {
 		callbacks.onError(
-			`No model chosen for ${TASK_LABELS[task].toLowerCase()} (${PROVIDER_LABELS[binding.provider]}). Pick one in settings.`,
+			`No model chosen for ${TASK_LABELS[task].toLowerCase()} (${PROVIDER_LABELS[binding.provider]}). Pick one in settings.`
 		);
 		return undefined;
 	}
 
 	const backend = plugin.getBackend();
-	const request = { ...plugin.buildProviderRequest(binding.provider), model: binding.model };
+	const request = {
+		...plugin.buildProviderRequest(binding.provider),
+		model: binding.model,
+	};
 	const systemPrompt = buildTaskPrompt(plugin, task, input);
 	const maxAttempts = Math.max(1, plugin.settings.maxAttempts);
-	let lastError = "Unknown error";
+	let lastError = 'Unknown error';
 
-	callbacks.onStatus(task === "translate" ? "Translating…" : "Rewriting…");
+	callbacks.onStatus(task === 'translate' ? 'Translating…' : 'Rewriting…');
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 		try {
@@ -113,15 +127,20 @@ export function runTranslate(
 	plugin: TranslatePolishPlugin,
 	input: TaskInput,
 	callbacks: TaskCallbacks<string>,
-	signal?: StaleSignal,
+	signal?: StaleSignal
 ): Promise<string | undefined> {
 	return runTask(
 		plugin,
-		"translate",
+		'translate',
 		input,
-		{ ...callbacks, onResult: (reply) => callbacks.onResult(parseTranslationResponse(reply)) },
-		signal,
-	).then((reply) => (reply === undefined ? undefined : parseTranslationResponse(reply)));
+		{
+			...callbacks,
+			onResult: (reply) => callbacks.onResult(parseTranslationResponse(reply)),
+		},
+		signal
+	).then((reply) =>
+		reply === undefined ? undefined : parseTranslationResponse(reply)
+	);
 }
 
 /** Rewrite task with the reply parsed into rewrite + suggestions. */
@@ -129,13 +148,16 @@ export function runRewrite(
 	plugin: TranslatePolishPlugin,
 	input: TaskInput,
 	callbacks: TaskCallbacks<RewriteResult>,
-	signal?: StaleSignal,
+	signal?: StaleSignal
 ): Promise<RewriteResult | undefined> {
 	return runTask(
 		plugin,
-		"rewrite",
+		'rewrite',
 		input,
-		{ ...callbacks, onResult: (reply) => callbacks.onResult(parseRewriteResponse(reply)) },
-		signal,
+		{
+			...callbacks,
+			onResult: (reply) => callbacks.onResult(parseRewriteResponse(reply)),
+		},
+		signal
 	).then((reply) => (reply === undefined ? undefined : parseRewriteResponse(reply)));
 }

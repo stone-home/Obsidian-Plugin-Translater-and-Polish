@@ -1,7 +1,7 @@
-import { TaskBinding, TranslatePolishSettings } from "./defaults";
-import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId } from "./providers";
+import { TaskBinding, TranslatePolishSettings } from './defaults';
+import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId } from './providers';
 
-const SEPARATOR = "::";
+const SEPARATOR = '::';
 
 export function encodeBinding(binding: TaskBinding): string {
 	return `${binding.provider}${SEPARATOR}${binding.model}`;
@@ -12,7 +12,8 @@ export function decodeBinding(value: string): TaskBinding | undefined {
 	if (idx === -1) return undefined;
 	const provider = value.slice(0, idx) as ProviderId;
 	const model = value.slice(idx + SEPARATOR.length);
-	if (!(PROVIDER_IDS as readonly string[]).includes(provider) || !model) return undefined;
+	if (!(PROVIDER_IDS as readonly string[]).includes(provider) || !model)
+		return undefined;
 	return { provider, model };
 }
 
@@ -24,7 +25,7 @@ export function decodeBinding(value: string): TaskBinding | undefined {
 export function fillTaskModelSelect(
 	select: HTMLSelectElement,
 	settings: TranslatePolishSettings,
-	current: TaskBinding,
+	current: TaskBinding
 ): boolean {
 	select.empty();
 	let count = 0;
@@ -32,11 +33,11 @@ export function fillTaskModelSelect(
 	for (const id of PROVIDER_IDS) {
 		const models = settings.providers[id].models;
 		if (models.length === 0) continue;
-		const group = select.createEl("optgroup");
+		const group = select.createEl('optgroup');
 		group.label = PROVIDER_LABELS[id];
 		for (const model of models) {
 			const value = encodeBinding({ provider: id, model });
-			const opt = group.createEl("option", { value, text: model });
+			const opt = group.createEl('option', { value, text: model });
 			if (id === current.provider && model === current.model) {
 				opt.selected = true;
 				currentSeen = true;
@@ -45,7 +46,7 @@ export function fillTaskModelSelect(
 		}
 	}
 	if (current.model && !currentSeen) {
-		const opt = select.createEl("option", {
+		const opt = select.createEl('option', {
 			value: encodeBinding(current),
 			text: `${current.model} (${PROVIDER_LABELS[current.provider]}, not in fetched list)`,
 		});
@@ -53,7 +54,10 @@ export function fillTaskModelSelect(
 		count += 1;
 	}
 	if (count === 0) {
-		const opt = select.createEl("option", { value: "", text: "No models. Fetch models in settings." });
+		const opt = select.createEl('option', {
+			value: '',
+			text: 'No models. Fetch models in settings.',
+		});
 		opt.disabled = true;
 		opt.selected = true;
 	}

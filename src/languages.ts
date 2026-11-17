@@ -1,12 +1,15 @@
 /** Shared language codes for settings and translate window dropdowns. */
-export const LANGUAGE_OPTIONS = ["auto", "en", "zh", "ja", "fr", "de", "es"] as const;
+export const LANGUAGE_OPTIONS = ['auto', 'en', 'zh', 'ja', 'fr', 'de', 'es'] as const;
 
 export type LanguageOption = (typeof LANGUAGE_OPTIONS)[number];
 
 /**
  * Returns `preferred` when it is a known option; otherwise `fallback`.
  */
-export function resolveLanguage(preferred: string | undefined, fallback: string): string {
+export function resolveLanguage(
+	preferred: string | undefined,
+	fallback: string
+): string {
 	const want = preferred?.trim();
 	if (want && (LANGUAGE_OPTIONS as readonly string[]).includes(want)) {
 		return want;
@@ -17,11 +20,14 @@ export function resolveLanguage(preferred: string | undefined, fallback: string)
 	return LANGUAGE_OPTIONS[0];
 }
 
-export function populateLanguageSelect(select: HTMLSelectElement, current: string): void {
+export function populateLanguageSelect(
+	select: HTMLSelectElement,
+	current: string
+): void {
 	const selected = resolveLanguage(current, LANGUAGE_OPTIONS[0]);
 	select.empty();
 	for (const value of LANGUAGE_OPTIONS) {
-		const opt = select.createEl("option", { value, text: value });
+		const opt = select.createEl('option', { value, text: value });
 		if (value === selected) {
 			opt.selected = true;
 		}

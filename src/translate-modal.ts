@@ -1,17 +1,25 @@
-import { App, Editor, EditorPosition, Modal, Notice, debounce, setIcon } from "obsidian";
-import type TranslatePolishPlugin from "./main";
-import { TASK_IDS, TASK_LABELS, TaskId } from "./defaults";
-import { populateLanguageSelect } from "./languages";
-import { decodeBinding, fillTaskModelSelect } from "./model-picker";
-import { RewriteResult } from "./response-parser";
-import { runRewrite, runTranslate } from "./translation-job";
+import {
+	App,
+	Editor,
+	EditorPosition,
+	Modal,
+	Notice,
+	debounce,
+	setIcon,
+} from 'obsidian';
+import type TranslatePolishPlugin from './main';
+import { TASK_IDS, TASK_LABELS, TaskId } from './defaults';
+import { populateLanguageSelect } from './languages';
+import { decodeBinding, fillTaskModelSelect } from './model-picker';
+import { RewriteResult } from './response-parser';
+import { runRewrite, runTranslate } from './translation-job';
 
-type Variant = "native" | "direct";
+type Variant = 'native' | 'direct';
 
 /** Builds an Obsidian callout quoting `text`. */
 export function buildCallout(text: string, targetLang: string): string {
-	const body = text.split("\n").map((line) => `> ${line}`);
-	return [`> [!translate] ${targetLang}`, ...body].join("\n");
+	const body = text.split('\n').map((line) => `> ${line}`);
+	return [`> [!translate] ${targetLang}`, ...body].join('\n');
 }
 
 /**
@@ -32,7 +40,7 @@ export class TranslateModal extends Modal {
 	private seq = 0;
 	private translation: string | undefined;
 	private rewrite: RewriteResult | undefined;
-	private chosen: Variant = "native";
+	private chosen: Variant = 'native';
 	private startedAt = 0;
 	private pending = 0;
 
@@ -60,7 +68,7 @@ export class TranslateModal extends Modal {
 		editor: Editor | null,
 		from: EditorPosition | null,
 		to: EditorPosition | null,
-		initialText: string,
+		initialText: string
 	) {
 		super(app);
 		this.plugin = plugin;
@@ -76,36 +84,36 @@ export class TranslateModal extends Modal {
 				void this.run();
 			},
 			Math.max(100, plugin.settings.liveDelayMs),
-			true,
+			true
 		);
 		this.saveSize = debounce(
 			() => {
 				void this.persistSize();
 			},
 			300,
-			true,
+			true
 		);
 	}
 
 	onOpen(): void {
 		this.plugin.trackModal(this, true);
-		this.setTitle("Translate and polish");
-		this.modalEl.addClass("translate-modal");
+		this.setTitle('Translate and polish');
+		this.modalEl.addClass('translate-modal');
 		this.applySavedSize();
 		this.watchSize();
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass("translate-modal-content");
+		contentEl.addClass('translate-modal-content');
 
-		this.buildToolbar(contentEl.createDiv({ cls: "translate-modal-toolbar" }));
+		this.buildToolbar(contentEl.createDiv({ cls: 'translate-modal-toolbar' }));
 
-		const columns = contentEl.createDiv({ cls: "translate-modal-columns" });
-		this.buildSourceColumn(columns.createDiv({ cls: "translate-modal-source" }));
-		this.buildResultColumn(columns.createDiv({ cls: "translate-modal-results" }));
+		const columns = contentEl.createDiv({ cls: 'translate-modal-columns' });
+		this.buildSourceColumn(columns.createDiv({ cls: 'translate-modal-source' }));
+		this.buildResultColumn(columns.createDiv({ cls: 'translate-modal-results' }));
 
-		this.buildFooter(contentEl.createDiv({ cls: "translate-modal-footer" }));
+		this.buildFooter(contentEl.createDiv({ cls: 'translate-modal-footer' }));
 
-		this.scope.register(["Mod"], "Enter", () => {
+		this.scope.register(['Mod'], 'Enter', () => {
 			void this.run();
 			return false;
 		});
@@ -115,7 +123,7 @@ export class TranslateModal extends Modal {
 		if (this.initialText.trim()) {
 			void this.run();
 		} else {
-			this.setStatus("Type or paste text. Translation runs after you pause.");
+			this.setStatus('Type or paste text. Translation runs after you pause.');
 		}
 	}
 
@@ -138,7 +146,7 @@ export class TranslateModal extends Modal {
 
 	/** The window has CSS `resize: both`; remember the size the user drags it to. */
 	private watchSize(): void {
-		if (typeof ResizeObserver === "undefined") return;
+		if (typeof ResizeObserver === 'undefined') return;
 		let first = true;
 		this.resizeObserver = new ResizeObserver(() => {
 			// The first callback fires on observe(); only user-driven changes should be stored.
@@ -155,7 +163,11 @@ export class TranslateModal extends Modal {
 		const width = Math.round(this.modalEl.offsetWidth);
 		const height = Math.round(this.modalEl.offsetHeight);
 		if (!width || !height) return;
-		if (width === this.plugin.settings.modalWidth && height === this.plugin.settings.modalHeight) return;
+		if (
+			width === this.plugin.settings.modalWidth &&
+			height === this.plugin.settings.modalHeight
+		)
+			return;
 		this.plugin.settings.modalWidth = width;
 		this.plugin.settings.modalHeight = height;
 		await this.plugin.saveSettings();
@@ -163,12 +175,21 @@ export class TranslateModal extends Modal {
 
 	private buildToolbar(bar: HTMLElement): void {
 		for (const task of TASK_IDS) {
-			const wrap = bar.createDiv({ cls: "translate-modal-task" });
-			wrap.createSpan({ cls: "translate-modal-task-label", text: TASK_LABELS[task] });
-			const select = wrap.createEl("select", { cls: "dropdown translate-modal-model" });
+			const wrap = bar.createDiv({ cls: 'translate-modal-task' });
+			wrap.createSpan({
+				cls: 'translate-modal-task-label',
+				text: TASK_LABELS[task],
+			});
+			const select = wrap.createEl('select', {
+				cls: 'dropdown translate-modal-model',
+			});
 			this.taskSelects[task] = select;
-			fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
-			select.addEventListener("change", () => {
+			fillTaskModelSelect(
+				select,
+				this.plugin.settings,
+				this.plugin.settings.tasks[task]
+			);
+			select.addEventListener('change', () => {
 				void (async () => {
 					const binding = decodeBinding(select.value);
 					if (!binding) return;
@@ -179,38 +200,41 @@ export class TranslateModal extends Modal {
 			});
 		}
 
-		const refresh = bar.createEl("button", {
-			cls: "clickable-icon translate-modal-icon",
-			attr: { "aria-label": "Fetch models from all providers" },
+		const refresh = bar.createEl('button', {
+			cls: 'clickable-icon translate-modal-icon',
+			attr: { 'aria-label': 'Fetch models from all providers' },
 		});
-		setIcon(refresh, "refresh-cw");
-		refresh.addEventListener("click", () => {
+		setIcon(refresh, 'refresh-cw');
+		refresh.addEventListener('click', () => {
 			void (async () => {
-				refresh.addClass("is-loading");
+				refresh.addClass('is-loading');
 				try {
 					const summary = await this.plugin.fetchAllModels();
 					this.refreshTaskSelects();
 					new Notice(summary);
 				} finally {
-					refresh.removeClass("is-loading");
+					refresh.removeClass('is-loading');
 				}
 			})();
 		});
 
-		bar.createDiv({ cls: "translate-modal-spacer" });
+		bar.createDiv({ cls: 'translate-modal-spacer' });
 
-		const sourceSelect = bar.createEl("select", { cls: "dropdown" });
+		const sourceSelect = bar.createEl('select', { cls: 'dropdown' });
 		populateLanguageSelect(sourceSelect, this.sourceLang);
-		sourceSelect.addEventListener("change", () => {
+		sourceSelect.addEventListener('change', () => {
 			this.sourceLang = sourceSelect.value;
 			this.scheduleRun();
 		});
 
-		const swap = bar.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": "Swap languages" } });
-		setIcon(swap, "arrow-left-right");
-		swap.addEventListener("click", () => {
-			if (this.sourceLang === "auto") {
-				new Notice("Pick a source language before swapping.");
+		const swap = bar.createEl('button', {
+			cls: 'clickable-icon translate-modal-icon',
+			attr: { 'aria-label': 'Swap languages' },
+		});
+		setIcon(swap, 'arrow-left-right');
+		swap.addEventListener('click', () => {
+			if (this.sourceLang === 'auto') {
+				new Notice('Pick a source language before swapping.');
 				return;
 			}
 			const next = this.sourceLang;
@@ -221,9 +245,9 @@ export class TranslateModal extends Modal {
 			this.scheduleRun();
 		});
 
-		const targetSelect = bar.createEl("select", { cls: "dropdown" });
+		const targetSelect = bar.createEl('select', { cls: 'dropdown' });
 		populateLanguageSelect(targetSelect, this.targetLang);
-		targetSelect.addEventListener("change", () => {
+		targetSelect.addEventListener('change', () => {
 			this.targetLang = targetSelect.value;
 			this.scheduleRun();
 		});
@@ -232,77 +256,101 @@ export class TranslateModal extends Modal {
 	private refreshTaskSelects(): void {
 		for (const task of TASK_IDS) {
 			const select = this.taskSelects[task];
-			if (select) fillTaskModelSelect(select, this.plugin.settings, this.plugin.settings.tasks[task]);
+			if (select)
+				fillTaskModelSelect(
+					select,
+					this.plugin.settings,
+					this.plugin.settings.tasks[task]
+				);
 		}
 	}
 
 	private buildSourceColumn(column: HTMLElement): void {
-		column.createDiv({ cls: "translate-modal-label", text: "Your text" });
-		this.sourceEl = column.createEl("textarea", { cls: "translate-modal-textarea" });
+		column.createDiv({ cls: 'translate-modal-label', text: 'Your text' });
+		this.sourceEl = column.createEl('textarea', {
+			cls: 'translate-modal-textarea',
+		});
 		this.sourceEl.spellcheck = true;
-		this.sourceEl.placeholder = "Type or paste the text you wrote…";
-		this.sourceEl.addEventListener("input", () => {
+		this.sourceEl.placeholder = 'Type or paste the text you wrote…';
+		this.sourceEl.addEventListener('input', () => {
 			if (this.sourceEl.value.trim()) {
 				this.scheduleRun();
 			} else {
 				this.scheduleRun.cancel();
 				this.seq += 1;
-				this.setStatus("Waiting for text.");
+				this.setStatus('Waiting for text.');
 			}
 		});
-		this.statusEl = column.createDiv({ cls: "translate-modal-status" });
+		this.statusEl = column.createDiv({ cls: 'translate-modal-status' });
 	}
 
 	private buildResultColumn(column: HTMLElement): void {
-		const native = this.buildCard(column, "native", "Native rewrite of your text");
+		const native = this.buildCard(column, 'native', 'Native rewrite of your text');
 		this.nativeCard = native.card;
 		this.nativeBody = native.body;
-		const direct = this.buildCard(column, "direct", "Translation");
+		const direct = this.buildCard(column, 'direct', 'Translation');
 		this.directCard = direct.card;
 		this.directBody = direct.body;
 
-		this.suggestionsEl = column.createEl("details", { cls: "translate-suggestions" });
-		this.suggestionsSummary = this.suggestionsEl.createEl("summary", { text: "What changed" });
-		this.suggestionsList = this.suggestionsEl.createEl("ul");
+		this.suggestionsEl = column.createEl('details', {
+			cls: 'translate-suggestions',
+		});
+		this.suggestionsSummary = this.suggestionsEl.createEl('summary', {
+			text: 'What changed',
+		});
+		this.suggestionsList = this.suggestionsEl.createEl('ul');
 		this.suggestionsEl.hide();
 		this.updateChosenHighlight();
 	}
 
-	private buildCard(parent: HTMLElement, variant: Variant, title: string): { card: HTMLElement; body: HTMLElement } {
-		const card = parent.createDiv({ cls: `translate-card translate-card--${variant}` });
-		const header = card.createDiv({ cls: "translate-card-header" });
-		header.createSpan({ cls: "translate-card-title", text: title });
-		const use = header.createEl("button", { cls: "translate-card-use", text: "Use this" });
-		use.addEventListener("click", () => {
+	private buildCard(
+		parent: HTMLElement,
+		variant: Variant,
+		title: string
+	): { card: HTMLElement; body: HTMLElement } {
+		const card = parent.createDiv({
+			cls: `translate-card translate-card--${variant}`,
+		});
+		const header = card.createDiv({ cls: 'translate-card-header' });
+		header.createSpan({ cls: 'translate-card-title', text: title });
+		const use = header.createEl('button', {
+			cls: 'translate-card-use',
+			text: 'Use this',
+		});
+		use.addEventListener('click', () => {
 			this.chosen = variant;
 			this.updateChosenHighlight();
 			this.setResultButtonsEnabled(Boolean(this.chosenText()));
 		});
-		const body = card.createDiv({ cls: "translate-card-body", text: "—" });
+		const body = card.createDiv({ cls: 'translate-card-body', text: '—' });
 		return { card, body };
 	}
 
 	private buildFooter(footer: HTMLElement): void {
-		const translateNow = footer.createEl("button", { text: "Run now" });
-		translateNow.setAttribute("aria-label", "Run now (Ctrl/Cmd+Enter)");
-		translateNow.addEventListener("click", () => {
+		const translateNow = footer.createEl('button', { text: 'Run now' });
+		translateNow.setAttribute('aria-label', 'Run now (Ctrl/Cmd+Enter)');
+		translateNow.addEventListener('click', () => {
 			void this.run();
 		});
 
-		footer.createDiv({ cls: "translate-modal-spacer" });
+		footer.createDiv({ cls: 'translate-modal-spacer' });
 
-		this.applyButton = footer.createEl("button", {
-			cls: "mod-cta",
-			text: this.hasSelection ? "Replace selection" : "Insert at cursor",
+		this.applyButton = footer.createEl('button', {
+			cls: 'mod-cta',
+			text: this.hasSelection ? 'Replace selection' : 'Insert at cursor',
 		});
-		this.applyButton.addEventListener("click", () => this.applyToEditor("plain"));
+		this.applyButton.addEventListener('click', () => this.applyToEditor('plain'));
 
-		this.calloutButton = footer.createEl("button", { text: "Insert as callout" });
-		this.calloutButton.addEventListener("click", () => this.applyToEditor("callout"));
+		this.calloutButton = footer.createEl('button', { text: 'Insert as callout' });
+		this.calloutButton.addEventListener('click', () =>
+			this.applyToEditor('callout')
+		);
 
-		this.copyButton = footer.createEl("button", { text: "Copy" });
-		this.copyButton.addEventListener("click", () => {
-			void navigator.clipboard.writeText(this.chosenText()).then(() => new Notice("Copied to clipboard."));
+		this.copyButton = footer.createEl('button', { text: 'Copy' });
+		this.copyButton.addEventListener('click', () => {
+			void navigator.clipboard
+				.writeText(this.chosenText())
+				.then(() => new Notice('Copied to clipboard.'));
 		});
 
 		this.setResultButtonsEnabled(false);
@@ -324,7 +372,11 @@ export class TranslateModal extends Modal {
 		const text = this.sourceEl.value;
 		const my = ++this.seq;
 		const signal = { isStale: () => my !== this.seq };
-		const input = { sourceText: text, sourceLang: this.sourceLang, targetLang: this.targetLang };
+		const input = {
+			sourceText: text,
+			sourceLang: this.sourceLang,
+			targetLang: this.targetLang,
+		};
 
 		this.startedAt = Date.now();
 		this.pending = 2;
@@ -332,7 +384,7 @@ export class TranslateModal extends Modal {
 		this.rewrite = undefined;
 		this.setResultButtonsEnabled(false);
 		this.suggestionsEl.hide();
-		this.setStatus("Running…");
+		this.setStatus('Running…');
 
 		const finishOne = (): void => {
 			this.pending -= 1;
@@ -351,7 +403,7 @@ export class TranslateModal extends Modal {
 					onStatus: (message) => this.directBody.setText(message),
 					onResult: (translation) => {
 						this.translation = translation;
-						this.directBody.setText(translation || "—");
+						this.directBody.setText(translation || '—');
 						this.setResultButtonsEnabled(Boolean(this.chosenText()));
 						finishOne();
 					},
@@ -360,7 +412,7 @@ export class TranslateModal extends Modal {
 						finishOne();
 					},
 				},
-				signal,
+				signal
 			),
 			runRewrite(
 				this.plugin,
@@ -369,7 +421,7 @@ export class TranslateModal extends Modal {
 					onStatus: (message) => this.nativeBody.setText(message),
 					onResult: (rewrite) => {
 						this.rewrite = rewrite;
-						this.nativeBody.setText(rewrite.nativeRewrite || "—");
+						this.nativeBody.setText(rewrite.nativeRewrite || '—');
 						this.renderSuggestions(rewrite.suggestions);
 						this.setResultButtonsEnabled(Boolean(this.chosenText()));
 						finishOne();
@@ -379,7 +431,7 @@ export class TranslateModal extends Modal {
 						finishOne();
 					},
 				},
-				signal,
+				signal
 			),
 		]);
 	}
@@ -391,7 +443,7 @@ export class TranslateModal extends Modal {
 			return;
 		}
 		for (const item of suggestions) {
-			this.suggestionsList.createEl("li", { text: item });
+			this.suggestionsList.createEl('li', { text: item });
 		}
 		this.suggestionsSummary.setText(`What changed (${suggestions.length})`);
 		this.suggestionsEl.show();
@@ -400,57 +452,78 @@ export class TranslateModal extends Modal {
 	/** Once both tasks settled: if the chosen card came back empty, highlight the one that has text. */
 	private afterAllDone(): void {
 		if (!this.chosenText()) {
-			if (this.chosen === "native" && this.translation) this.chosen = "direct";
-			else if (this.chosen === "direct" && this.rewrite?.nativeRewrite) this.chosen = "native";
+			if (this.chosen === 'native' && this.translation) this.chosen = 'direct';
+			else if (this.chosen === 'direct' && this.rewrite?.nativeRewrite)
+				this.chosen = 'native';
 		}
 		this.updateChosenHighlight();
 		this.setResultButtonsEnabled(Boolean(this.chosenText()));
 	}
 
 	private updateChosenHighlight(): void {
-		this.nativeCard.toggleClass("is-selected", this.chosen === "native");
-		this.directCard.toggleClass("is-selected", this.chosen === "direct");
+		this.nativeCard.toggleClass('is-selected', this.chosen === 'native');
+		this.directCard.toggleClass('is-selected', this.chosen === 'direct');
 	}
 
 	private chosenText(): string {
-		return this.chosen === "native" ? (this.rewrite?.nativeRewrite ?? "") : (this.translation ?? "");
+		return this.chosen === 'native'
+			? (this.rewrite?.nativeRewrite ?? '')
+			: (this.translation ?? '');
 	}
 
-	private applyToEditor(mode: "plain" | "callout"): void {
+	private applyToEditor(mode: 'plain' | 'callout'): void {
 		const text = this.chosenText();
 		if (!text || !this.editor) return;
 		const editor = this.editor;
-		const payload = mode === "callout" ? buildCallout(text, this.chosen === "direct" ? this.targetLang : this.sourceLang) : text;
+		const payload =
+			mode === 'callout'
+				? buildCallout(
+						text,
+						this.chosen === 'direct' ? this.targetLang : this.sourceLang
+					)
+				: text;
 
 		try {
 			this.writeBack(editor, payload, mode);
 		} catch (error) {
 			new Notice(
-				"Could not write into the note (was it closed?). Use Copy instead. " +
-					(error instanceof Error ? error.message : String(error)),
+				'Could not write into the note (was it closed?). Use Copy instead. ' +
+					(error instanceof Error ? error.message : String(error))
 			);
 			return;
 		}
 		this.close();
 	}
 
-	private writeBack(editor: Editor, payload: string, mode: "plain" | "callout"): void {
+	private writeBack(
+		editor: Editor,
+		payload: string,
+		mode: 'plain' | 'callout'
+	): void {
 		if (this.hasSelection && this.from && this.to) {
 			const unchanged = editor.getRange(this.from, this.to) === this.initialText;
 			if (!unchanged) {
 				editor.replaceRange(payload, editor.getCursor());
-				new Notice("Selection changed while translating; inserted at the cursor instead.");
-			} else if (mode === "callout") {
+				new Notice(
+					'Selection changed while translating; inserted at the cursor instead.'
+				);
+			} else if (mode === 'callout') {
 				// A selection ending at column 0 stops at the previous line's end.
-				const lastLine = this.to.ch === 0 && this.to.line > this.from.line ? this.to.line - 1 : this.to.line;
-				const lineEnd: EditorPosition = { line: lastLine, ch: editor.getLine(lastLine).length };
+				const lastLine =
+					this.to.ch === 0 && this.to.line > this.from.line
+						? this.to.line - 1
+						: this.to.line;
+				const lineEnd: EditorPosition = {
+					line: lastLine,
+					ch: editor.getLine(lastLine).length,
+				};
 				editor.replaceRange(`\n${payload}`, lineEnd);
 			} else {
 				editor.replaceRange(payload, this.from, this.to);
 			}
 		} else {
 			const at = this.from ?? editor.getCursor();
-			const insertion = mode === "callout" ? `\n${payload}\n` : payload;
+			const insertion = mode === 'callout' ? `\n${payload}\n` : payload;
 			editor.replaceRange(insertion, at);
 		}
 	}

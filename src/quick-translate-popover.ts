@@ -1,10 +1,10 @@
-import { Editor, EditorPosition, EventRef, Notice, Scope, setIcon } from "obsidian";
-import type TranslatePolishPlugin from "./main";
-import { RewriteResult } from "./response-parser";
-import { TranslateModal } from "./translate-modal";
-import { runRewrite, runTranslate } from "./translation-job";
+import { Editor, EditorPosition, EventRef, Notice, Scope, setIcon } from 'obsidian';
+import type TranslatePolishPlugin from './main';
+import { RewriteResult } from './response-parser';
+import { TranslateModal } from './translate-modal';
+import { runRewrite, runTranslate } from './translation-job';
 
-type Variant = "direct" | "native";
+type Variant = 'direct' | 'native';
 
 export interface PopoverAnchor {
 	left: number;
@@ -30,10 +30,17 @@ export class QuickTranslatePopover {
 		from: EditorPosition,
 		to: EditorPosition,
 		text: string,
-		anchor: PopoverAnchor,
+		anchor: PopoverAnchor
 	): QuickTranslatePopover {
 		QuickTranslatePopover.current?.close();
-		const popover = new QuickTranslatePopover(plugin, editor, from, to, text, anchor);
+		const popover = new QuickTranslatePopover(
+			plugin,
+			editor,
+			from,
+			to,
+			text,
+			anchor
+		);
 		QuickTranslatePopover.current = popover;
 		popover.mount();
 		return popover;
@@ -51,7 +58,7 @@ export class QuickTranslatePopover {
 	private translation: string | undefined;
 	private rewrite: RewriteResult | undefined;
 	private rewriteRequested = false;
-	private variant: Variant = "direct";
+	private variant: Variant = 'direct';
 	private seq = 0;
 	private leafRef: EventRef | undefined;
 	private readonly doc: Document;
@@ -71,7 +78,12 @@ export class QuickTranslatePopover {
 	/** Popout windows have their own Node class, so use Obsidian's cross-window check. */
 	private isInside(target: EventTarget | null): boolean {
 		const node = target as Node | null;
-		return !!node && typeof node.instanceOf === "function" && node.instanceOf(Node) && this.el.contains(node);
+		return (
+			!!node &&
+			typeof node.instanceOf === 'function' &&
+			node.instanceOf(Node) &&
+			this.el.contains(node)
+		);
 	}
 
 	private constructor(
@@ -80,63 +92,90 @@ export class QuickTranslatePopover {
 		private readonly from: EditorPosition,
 		private readonly to: EditorPosition,
 		private readonly text: string,
-		private readonly anchor: PopoverAnchor,
+		private readonly anchor: PopoverAnchor
 	) {
 		this.doc = activeDocument;
-		this.el = this.doc.body.createDiv({ cls: "translate-popover" });
+		this.el = this.doc.body.createDiv({ cls: 'translate-popover' });
 		this.scope = new Scope(plugin.app.scope);
-		this.scope.register([], "Escape", () => {
+		this.scope.register([], 'Escape', () => {
 			this.close();
 			return false;
 		});
 	}
 
 	private mount(): void {
-		const header = this.el.createDiv({ cls: "translate-popover-header" });
+		const header = this.el.createDiv({ cls: 'translate-popover-header' });
 		header.createSpan({
-			cls: "translate-popover-langs",
+			cls: 'translate-popover-langs',
 			text: `${this.plugin.settings.defaultSourceLang} → ${this.plugin.settings.defaultTargetLang}`,
 		});
-		this.variantSelect = header.createEl("select", { cls: "dropdown translate-popover-variant" });
-		this.variantSelect.createEl("option", { value: "direct", text: "Translation" });
-		this.variantSelect.createEl("option", { value: "native", text: "Native rewrite" });
-		this.variantSelect.addEventListener("change", () => {
+		this.variantSelect = header.createEl('select', {
+			cls: 'dropdown translate-popover-variant',
+		});
+		this.variantSelect.createEl('option', { value: 'direct', text: 'Translation' });
+		this.variantSelect.createEl('option', {
+			value: 'native',
+			text: 'Native rewrite',
+		});
+		this.variantSelect.addEventListener('change', () => {
 			this.variant = this.variantSelect.value as Variant;
 			this.renderBody();
-			if (this.variant === "native" && !this.rewriteRequested) {
+			if (this.variant === 'native' && !this.rewriteRequested) {
 				void this.runRewrite();
 			}
 		});
 
-		header.createDiv({ cls: "translate-modal-spacer" });
-		this.iconButton(header, "copy", "Copy", () => {
+		header.createDiv({ cls: 'translate-modal-spacer' });
+		this.iconButton(header, 'copy', 'Copy', () => {
 			const value = this.currentText();
 			if (!value) return;
-			void navigator.clipboard.writeText(value).then(() => new Notice("Copied to clipboard."));
+			void navigator.clipboard
+				.writeText(value)
+				.then(() => new Notice('Copied to clipboard.'));
 		});
-		this.iconButton(header, "maximize-2", "Open in translate window", () => {
+		this.iconButton(header, 'maximize-2', 'Open in translate window', () => {
 			this.close();
-			new TranslateModal(this.plugin.app, this.plugin, this.editor, this.from, this.to, this.text).open();
+			new TranslateModal(
+				this.plugin.app,
+				this.plugin,
+				this.editor,
+				this.from,
+				this.to,
+				this.text
+			).open();
 		});
-		this.iconButton(header, "x", "Close", () => this.close());
+		this.iconButton(header, 'x', 'Close', () => this.close());
 
-		this.bodyEl = this.el.createDiv({ cls: "translate-popover-body" });
-		this.statusEl = this.el.createDiv({ cls: "translate-popover-status", text: "Translating…" });
+		this.bodyEl = this.el.createDiv({ cls: 'translate-popover-body' });
+		this.statusEl = this.el.createDiv({
+			cls: 'translate-popover-status',
+			text: 'Translating…',
+		});
 
 		this.plugin.app.keymap.pushScope(this.scope);
-		this.doc.addEventListener("mousedown", this.onMouseDown, true);
-		this.doc.addEventListener("scroll", this.onScroll, true);
-		activeWindow.addEventListener("resize", this.onResize);
-		this.leafRef = this.plugin.app.workspace.on("active-leaf-change", () => this.close());
+		this.doc.addEventListener('mousedown', this.onMouseDown, true);
+		this.doc.addEventListener('scroll', this.onScroll, true);
+		activeWindow.addEventListener('resize', this.onResize);
+		this.leafRef = this.plugin.app.workspace.on('active-leaf-change', () =>
+			this.close()
+		);
 
 		this.position();
 		void this.runTranslate();
 	}
 
-	private iconButton(parent: HTMLElement, icon: string, label: string, onClick: () => void): void {
-		const button = parent.createEl("button", { cls: "clickable-icon translate-modal-icon", attr: { "aria-label": label } });
+	private iconButton(
+		parent: HTMLElement,
+		icon: string,
+		label: string,
+		onClick: () => void
+	): void {
+		const button = parent.createEl('button', {
+			cls: 'clickable-icon translate-modal-icon',
+			attr: { 'aria-label': label },
+		});
 		setIcon(button, icon);
-		button.addEventListener("click", onClick);
+		button.addEventListener('click', onClick);
 	}
 
 	private input() {
@@ -169,7 +208,7 @@ export class QuickTranslatePopover {
 					this.showStatus(message, true);
 				},
 			},
-			this.signal(),
+			this.signal()
 		);
 	}
 
@@ -191,23 +230,25 @@ export class QuickTranslatePopover {
 					this.showStatus(message, true);
 				},
 			},
-			this.signal(),
+			this.signal()
 		);
 	}
 
 	private showStatus(message: string, isError: boolean): void {
 		this.statusEl.setText(message);
-		this.statusEl.toggleClass("is-error", isError);
+		this.statusEl.toggleClass('is-error', isError);
 		this.statusEl.show();
 		this.position();
 	}
 
 	private currentText(): string {
-		return this.variant === "native" ? (this.rewrite?.nativeRewrite ?? "") : (this.translation ?? "");
+		return this.variant === 'native'
+			? (this.rewrite?.nativeRewrite ?? '')
+			: (this.translation ?? '');
 	}
 
 	private renderBody(): void {
-		this.bodyEl.setText(this.currentText() || "—");
+		this.bodyEl.setText(this.currentText() || '—');
 	}
 
 	private position(): void {
@@ -231,9 +272,9 @@ export class QuickTranslatePopover {
 		this.closed = true;
 		this.seq += 1;
 		this.plugin.app.keymap.popScope(this.scope);
-		this.doc.removeEventListener("mousedown", this.onMouseDown, true);
-		this.doc.removeEventListener("scroll", this.onScroll, true);
-		activeWindow.removeEventListener("resize", this.onResize);
+		this.doc.removeEventListener('mousedown', this.onMouseDown, true);
+		this.doc.removeEventListener('scroll', this.onScroll, true);
+		activeWindow.removeEventListener('resize', this.onResize);
 		if (this.leafRef) this.plugin.app.workspace.offref(this.leafRef);
 		this.el.remove();
 		if (QuickTranslatePopover.current === this) {

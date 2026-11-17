@@ -1,13 +1,27 @@
-import { Editor, Menu, Notice, Plugin } from "obsidian";
-import { freshDefaultSettings } from "./defaults";
-import { resolveLanguage } from "./languages";
-import { PROVIDER_IDS, PROVIDER_LABELS, ProviderId, providerUsesApiKey, secretId } from "./providers";
-import { PopoverAnchor, QuickTranslatePopover } from "./quick-translate-popover";
-import { DEFAULT_SETTINGS, TranslatePolishSettingTab, TranslatePolishSettings } from "./settings";
-import { migrateSettings } from "./settings-migration";
-import { TranslateModal } from "./translate-modal";
-import { ProviderRequest, TranslationBackend, createDefaultBackend } from "./translation-backend";
-import { runTranslate } from "./translation-job";
+import { Editor, Menu, Notice, Plugin } from 'obsidian';
+import { freshDefaultSettings } from './defaults';
+import { resolveLanguage } from './languages';
+import {
+	PROVIDER_IDS,
+	PROVIDER_LABELS,
+	ProviderId,
+	providerUsesApiKey,
+	secretId,
+} from './providers';
+import { PopoverAnchor, QuickTranslatePopover } from './quick-translate-popover';
+import {
+	DEFAULT_SETTINGS,
+	TranslatePolishSettingTab,
+	TranslatePolishSettings,
+} from './settings';
+import { migrateSettings } from './settings-migration';
+import { TranslateModal } from './translate-modal';
+import {
+	ProviderRequest,
+	TranslationBackend,
+	createDefaultBackend,
+} from './translation-backend';
+import { runTranslate } from './translation-job';
 
 export default class TranslatePolishPlugin extends Plugin {
 	settings: TranslatePolishSettings = freshDefaultSettings();
@@ -40,28 +54,28 @@ export default class TranslatePolishPlugin extends Plugin {
 
 	private registerSelectionCommands(): void {
 		this.registerEvent(
-			this.app.workspace.on("editor-menu", (menu: Menu, editor: Editor) => {
+			this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor) => {
 				if (!editor.somethingSelected()) return;
 				menu.addItem((item) =>
 					item
-						.setTitle("Quick translate")
-						.setIcon("languages")
-						.setSection("translate-polish")
-						.onClick((evt) => this.openQuickTranslate(editor, evt)),
+						.setTitle('Quick translate')
+						.setIcon('languages')
+						.setSection('translate-polish')
+						.onClick((evt) => this.openQuickTranslate(editor, evt))
 				);
 				menu.addItem((item) =>
 					item
-						.setTitle("Translate and polish…")
-						.setIcon("languages")
-						.setSection("translate-polish")
-						.onClick(() => this.openTranslateModal(editor)),
+						.setTitle('Translate and polish…')
+						.setIcon('languages')
+						.setSection('translate-polish')
+						.onClick(() => this.openTranslateModal(editor))
 				);
-			}),
+			})
 		);
 
 		this.addCommand({
-			id: "quick-translate-selection",
-			name: "Quick translate selection",
+			id: 'quick-translate-selection',
+			name: 'Quick translate selection',
 			editorCheckCallback: (checking, editor) => {
 				if (!editor.somethingSelected()) return false;
 				if (!checking) this.openQuickTranslate(editor);
@@ -69,8 +83,8 @@ export default class TranslatePolishPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
-			id: "polish-selection",
-			name: "Open window for selection",
+			id: 'polish-selection',
+			name: 'Open window for selection',
 			editorCheckCallback: (checking, editor) => {
 				if (!editor.somethingSelected()) return false;
 				if (!checking) this.openTranslateModal(editor);
@@ -78,13 +92,13 @@ export default class TranslatePolishPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
-			id: "open-translate-modal",
-			name: "Open translate & polish window",
+			id: 'open-translate-modal',
+			name: 'Open translate & polish window',
 			editorCallback: (editor) => this.openTranslateModal(editor),
 		});
 		this.addCommand({
-			id: "translate-replace-selection",
-			name: "Translate and replace selection",
+			id: 'translate-replace-selection',
+			name: 'Translate and replace selection',
 			editorCheckCallback: (checking, editor) => {
 				if (!editor.somethingSelected()) return false;
 				if (!checking) void this.translateAndReplaceSelection(editor);
@@ -96,17 +110,24 @@ export default class TranslatePolishPlugin extends Plugin {
 	openTranslateModal(editor: Editor): void {
 		QuickTranslatePopover.closeCurrent();
 		const selection = editor.getSelection();
-		const from = editor.getCursor("from");
-		const to = editor.getCursor("to");
+		const from = editor.getCursor('from');
+		const to = editor.getCursor('to');
 		new TranslateModal(this.app, this, editor, from, to, selection).open();
 	}
 
 	openQuickTranslate(editor: Editor, evt?: MouseEvent | KeyboardEvent): void {
 		const selection = editor.getSelection();
 		if (!selection) return;
-		const from = editor.getCursor("from");
-		const to = editor.getCursor("to");
-		QuickTranslatePopover.open(this, editor, from, to, selection, this.selectionAnchor(evt));
+		const from = editor.getCursor('from');
+		const to = editor.getCursor('to');
+		QuickTranslatePopover.open(
+			this,
+			editor,
+			from,
+			to,
+			selection,
+			this.selectionAnchor(evt)
+		);
 	}
 
 	/** Screen rectangle of the DOM selection, else the pointer, else the viewport's upper third. */
@@ -114,13 +135,26 @@ export default class TranslatePolishPlugin extends Plugin {
 		const domSelection = activeWindow.getSelection();
 		if (domSelection && domSelection.rangeCount > 0) {
 			const range = domSelection.getRangeAt(0);
-			const rect = typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : undefined;
+			const rect =
+				typeof range.getBoundingClientRect === 'function'
+					? range.getBoundingClientRect()
+					: undefined;
 			if (rect && (rect.width > 0 || rect.height > 0)) {
-				return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+				return {
+					left: rect.left,
+					right: rect.right,
+					top: rect.top,
+					bottom: rect.bottom,
+				};
 			}
 		}
 		if (evt && evt.instanceOf(MouseEvent) && (evt.clientX || evt.clientY)) {
-			return { left: evt.clientX, right: evt.clientX, top: evt.clientY, bottom: evt.clientY };
+			return {
+				left: evt.clientX,
+				right: evt.clientX,
+				top: evt.clientY,
+				bottom: evt.clientY,
+			};
 		}
 		const x = activeWindow.innerWidth / 2 - 200;
 		const y = activeWindow.innerHeight / 3;
@@ -130,9 +164,9 @@ export default class TranslatePolishPlugin extends Plugin {
 	async translateAndReplaceSelection(editor: Editor): Promise<void> {
 		const selection = editor.getSelection();
 		if (!selection) return;
-		const from = editor.getCursor("from");
-		const to = editor.getCursor("to");
-		const notice = new Notice("Translating…", 0);
+		const from = editor.getCursor('from');
+		const to = editor.getCursor('to');
+		const notice = new Notice('Translating…', 0);
 		await runTranslate(
 			this,
 			{
@@ -145,7 +179,9 @@ export default class TranslatePolishPlugin extends Plugin {
 				onResult: (result) => {
 					if (editor.getRange(from, to) !== selection) {
 						notice.hide();
-						new Notice("Selection changed while translating; nothing was replaced.");
+						new Notice(
+							'Selection changed while translating; nothing was replaced.'
+						);
 						return;
 					}
 					editor.replaceRange(result, from, to);
@@ -155,7 +191,7 @@ export default class TranslatePolishPlugin extends Plugin {
 					notice.setMessage(message);
 					window.setTimeout(() => notice.hide(), 6000);
 				},
-			},
+			}
 		);
 	}
 
@@ -169,7 +205,7 @@ export default class TranslatePolishPlugin extends Plugin {
 	}
 
 	getApiKey(id: ProviderId): string {
-		return this.app.secretStorage.getSecret(secretId(id)) ?? "";
+		return this.app.secretStorage.getSecret(secretId(id)) ?? '';
 	}
 
 	setApiKey(id: ProviderId, value: string): void {
@@ -178,7 +214,7 @@ export default class TranslatePolishPlugin extends Plugin {
 		} catch (error) {
 			new Notice(
 				`Translate and Polish: could not store ${PROVIDER_LABELS[id]} API key. ` +
-					(error instanceof Error ? error.message : String(error)),
+					(error instanceof Error ? error.message : String(error))
 			);
 		}
 	}
@@ -189,7 +225,7 @@ export default class TranslatePolishPlugin extends Plugin {
 		return {
 			provider: id,
 			baseUrl: config.baseUrl,
-			apiKey: providerUsesApiKey(id) ? this.getApiKey(id) : "",
+			apiKey: providerUsesApiKey(id) ? this.getApiKey(id) : '',
 			extraHeadersRaw: config.extraHeadersRaw,
 			timeoutMs: this.settings.timeoutMs,
 			debug: this.settings.debug,
@@ -198,7 +234,9 @@ export default class TranslatePolishPlugin extends Plugin {
 
 	/** Fetches the provider's model list, stores it, and returns it. Throws on failure. */
 	async fetchModels(id: ProviderId): Promise<string[]> {
-		const models = await this.getBackend().listModels(this.buildProviderRequest(id));
+		const models = await this.getBackend().listModels(
+			this.buildProviderRequest(id)
+		);
 		this.settings.providers[id].models = models;
 		await this.saveSettings();
 		return models;
@@ -216,19 +254,25 @@ export default class TranslatePolishPlugin extends Plugin {
 				const models = await this.fetchModels(id);
 				parts.push(`${PROVIDER_LABELS[id]}: ${models.length}`);
 			} catch (error) {
-				parts.push(`${PROVIDER_LABELS[id]}: ${error instanceof Error ? error.message : String(error)}`);
+				parts.push(
+					`${PROVIDER_LABELS[id]}: ${error instanceof Error ? error.message : String(error)}`
+				);
 			}
 		}
-		return parts.length > 0 ? `Models fetched. ${parts.join(" · ")}` : "No provider is configured yet.";
+		return parts.length > 0
+			? `Models fetched. ${parts.join(' · ')}`
+			: 'No provider is configured yet.';
 	}
 
 	// ---------------------------------------------------------------- settings
 
 	private async loadSettings() {
-		const { settings, legacyApiKey, migrated } = migrateSettings(await this.loadData());
+		const { settings, legacyApiKey, migrated } = migrateSettings(
+			await this.loadData()
+		);
 		this.settings = settings;
 		if (legacyApiKey) {
-			this.setApiKey("ollama", legacyApiKey);
+			this.setApiKey('ollama', legacyApiKey);
 		}
 		if (migrated) {
 			await this.saveData(this.settings);
@@ -238,11 +282,11 @@ export default class TranslatePolishPlugin extends Plugin {
 	async saveSettings() {
 		this.settings.defaultSourceLang = resolveLanguage(
 			this.settings.defaultSourceLang,
-			DEFAULT_SETTINGS.defaultSourceLang,
+			DEFAULT_SETTINGS.defaultSourceLang
 		);
 		this.settings.defaultTargetLang = resolveLanguage(
 			this.settings.defaultTargetLang,
-			DEFAULT_SETTINGS.defaultTargetLang,
+			DEFAULT_SETTINGS.defaultTargetLang
 		);
 		await this.saveData(this.settings);
 	}

@@ -4,14 +4,18 @@
  * unit-tested.
  */
 
-export type ProviderId = "ollama" | "openrouter" | "openwebui";
+export type ProviderId = 'ollama' | 'openrouter' | 'openwebui';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ["ollama", "openrouter", "openwebui"];
+export const PROVIDER_IDS: readonly ProviderId[] = [
+	'ollama',
+	'openrouter',
+	'openwebui',
+];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
-	ollama: "Ollama",
-	openrouter: "OpenRouter",
-	openwebui: "Open WebUI",
+	ollama: 'Ollama',
+	openrouter: 'OpenRouter',
+	openwebui: 'Open WebUI',
 };
 
 export interface ProviderConfig {
@@ -25,30 +29,30 @@ export interface ProviderConfig {
 
 export const PROVIDER_DEFAULTS: Record<ProviderId, ProviderConfig> = {
 	ollama: {
-		baseUrl: "http://localhost:13434",
-		models: ["llama3"],
-		extraHeadersRaw: "",
+		baseUrl: 'http://localhost:13434',
+		models: ['llama3'],
+		extraHeadersRaw: '',
 	},
 	openrouter: {
-		baseUrl: "https://openrouter.ai",
+		baseUrl: 'https://openrouter.ai',
 		models: [],
-		extraHeadersRaw: "",
+		extraHeadersRaw: '',
 	},
 	openwebui: {
-		baseUrl: "http://localhost:3000",
+		baseUrl: 'http://localhost:3000',
 		models: [],
-		extraHeadersRaw: "",
+		extraHeadersRaw: '',
 	},
 };
 
 /** Whether the provider expects a Bearer API key. */
 export function providerUsesApiKey(id: ProviderId): boolean {
-	return id !== "ollama";
+	return id !== 'ollama';
 }
 
 /** Whether the provider's base URL is user-configurable. */
 export function providerHasBaseUrl(id: ProviderId): boolean {
-	return id !== "openrouter";
+	return id !== 'openrouter';
 }
 
 export function cloneProviderConfig(config: ProviderConfig): ProviderConfig {
@@ -60,18 +64,18 @@ export function cloneProviderConfig(config: ProviderConfig): ProviderConfig {
 }
 
 export function normalizeBaseUrl(id: ProviderId, baseUrl: string): string {
-	const trimmed = (baseUrl || "").trim().replace(/\/+$/, "");
+	const trimmed = (baseUrl || '').trim().replace(/\/+$/, '');
 	return trimmed || PROVIDER_DEFAULTS[id].baseUrl;
 }
 
 export function chatUrl(id: ProviderId, baseUrl: string): string {
 	const base = normalizeBaseUrl(id, baseUrl);
 	switch (id) {
-		case "ollama":
+		case 'ollama':
 			return `${base}/api/chat`;
-		case "openwebui":
+		case 'openwebui':
 			return `${base}/api/chat/completions`;
-		case "openrouter":
+		case 'openrouter':
 			return `${base}/api/v1/chat/completions`;
 	}
 }
@@ -79,11 +83,11 @@ export function chatUrl(id: ProviderId, baseUrl: string): string {
 export function modelsUrl(id: ProviderId, baseUrl: string): string {
 	const base = normalizeBaseUrl(id, baseUrl);
 	switch (id) {
-		case "ollama":
+		case 'ollama':
 			return `${base}/api/tags`;
-		case "openwebui":
+		case 'openwebui':
 			return `${base}/api/models`;
-		case "openrouter":
+		case 'openrouter':
 			return `${base}/api/v1/models`;
 	}
 }
@@ -99,10 +103,10 @@ export function secretId(id: ProviderId): string {
  */
 export function parseHeaderLines(raw: string): Record<string, string> {
 	const headers: Record<string, string> = {};
-	for (const rawLine of (raw || "").split("\n")) {
+	for (const rawLine of (raw || '').split('\n')) {
 		const line = rawLine.trim();
 		if (!line) continue;
-		const idx = line.indexOf(":");
+		const idx = line.indexOf(':');
 		if (idx === -1) continue;
 		const key = line.slice(0, idx).trim();
 		const value = line.slice(idx + 1).trim();
@@ -112,22 +116,27 @@ export function parseHeaderLines(raw: string): Record<string, string> {
 	return headers;
 }
 
-export const OPENROUTER_REFERER = "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block";
-export const OPENROUTER_TITLE = "Translate and Polish";
+export const OPENROUTER_REFERER =
+	'https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block';
+export const OPENROUTER_TITLE = 'Translate and Polish';
 
 /**
  * Builds request headers: Bearer auth when a key is present, OpenRouter
  * attribution headers, then user-supplied headers (which win on conflict).
  */
-export function buildHeaders(id: ProviderId, apiKey: string, extraHeadersRaw: string): Record<string, string> {
+export function buildHeaders(
+	id: ProviderId,
+	apiKey: string,
+	extraHeadersRaw: string
+): Record<string, string> {
 	const headers: Record<string, string> = {};
-	const key = (apiKey || "").trim();
+	const key = (apiKey || '').trim();
 	if (key) {
-		headers["Authorization"] = `Bearer ${key}`;
+		headers['Authorization'] = `Bearer ${key}`;
 	}
-	if (id === "openrouter") {
-		headers["HTTP-Referer"] = OPENROUTER_REFERER;
-		headers["X-Title"] = OPENROUTER_TITLE;
+	if (id === 'openrouter') {
+		headers['HTTP-Referer'] = OPENROUTER_REFERER;
+		headers['X-Title'] = OPENROUTER_TITLE;
 	}
 	const extra = parseHeaderLines(extraHeadersRaw);
 	for (const name of Object.keys(extra)) {
@@ -140,9 +149,9 @@ function collectStrings(items: unknown, field: string): string[] {
 	if (!Array.isArray(items)) return [];
 	const out: string[] = [];
 	for (const item of items) {
-		if (item && typeof item === "object") {
+		if (item && typeof item === 'object') {
 			const value = (item as Record<string, unknown>)[field];
-			if (typeof value === "string" && value.trim()) {
+			if (typeof value === 'string' && value.trim()) {
 				out.push(value.trim());
 			}
 		}
@@ -155,16 +164,16 @@ function collectStrings(items: unknown, field: string): string[] {
  * model ids. Returns `[]` for malformed input.
  */
 export function mapModelsResponse(id: ProviderId, json: unknown): string[] {
-	if (!json || typeof json !== "object") return [];
+	if (!json || typeof json !== 'object') return [];
 	const data = json as Record<string, unknown>;
 	let names: string[];
 	switch (id) {
-		case "ollama":
-			names = collectStrings(data.models, "name");
+		case 'ollama':
+			names = collectStrings(data.models, 'name');
 			break;
-		case "openwebui":
-		case "openrouter":
-			names = collectStrings(data.data, "id");
+		case 'openwebui':
+		case 'openrouter':
+			names = collectStrings(data.data, 'id');
 			break;
 	}
 	const unique = Array.from(new Set(names));

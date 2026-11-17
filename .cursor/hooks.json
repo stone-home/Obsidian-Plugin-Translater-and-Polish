@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "hooks": {
+    "workspaceOpen": [
+      {
+        "command": "bash .skills-hub/scripts/skill-manager.sh register"
+      }
+    ]
+  }
+}

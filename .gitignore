@@ -145,10 +145,12 @@ data.json
 dist/
 build/
 coverage/
-.husky
 
 # IDEs
 .idea/
 .vscode/
 *.swp
 .DS_Store
+/.claude/rules/skills-hub/
+/playground/
+/.skills-hub/

@@ -2,3 +2,10 @@ node_modules
 dist
 build
 coverage
+
+# Written by skill-manager; keep the manager's own format
+AGENTS.md
+.claude/settings.json
+.cursor/hooks.json
+.agents/
+.codex/

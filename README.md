@@ -7,21 +7,25 @@ Write in a language that is not your first, select the passage, and the plugin g
 ## Features
 
 - **Quick translate** — a read-only bubble next to the selection. Switch between the direct translation and the native-speaker version, copy it, or jump to the full window. Esc, clicking outside, scrolling or changing panes closes it.
-- **Translate and polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and three results on the right: *Native rewrite of your text* (same language as the input), *Translation* and *Suggestions* explaining what the rewrite changed. Pick a result and **Replace selection** / **Insert at cursor**, **Insert as callout**, or **Copy**. `Ctrl/Cmd+Enter` translates immediately.
+- **Translate and polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and two results on the right, _Native rewrite of your text_ (same language as the input) and _Translation_, plus a collapsible _What changed_ list explaining the rewrite. Click **Use this** on a result, then **Replace selection** (**Insert at cursor** when nothing was selected), **Insert as callout**, or **Copy**. **Run now** or `Ctrl/Cmd+Enter` translates immediately; the toolbar can also swap languages and fetch models from all providers.
 - **Translate and replace selection** — no window; the selection is replaced with the direct translation.
 - **Two tasks, two models.** Translation and native rewrite are separate requests, each bound to its own provider and model. A dedicated translation model (for example translategemma on Ollama) can handle the translation while a general instruction-following model does the rewrite. The quick bubble requests the rewrite only when you switch to it.
 - **Three providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
+
+## Installation
+
+Copy `main.js`, `manifest.json` and `styles.css` from the latest GitHub release into `<vault>/.obsidian/plugins/translate-polish/`, then enable **Translate and Polish** in **Settings → Community plugins**. Requires Obsidian 1.11.4 or newer.
 
 ## Commands and menu
 
 Right-click a selection to find **Quick translate** and **Translate and polish…** in the editor menu. The command palette offers:
 
-| Command | Needs a selection |
-|---|---|
-| Quick translate selection | yes |
-| Open window for selection | yes |
-| Open translate & polish window | no (opens with an empty scratchpad) |
-| Translate and replace selection | yes |
+| Command                         | Needs a selection                   |
+| ------------------------------- | ----------------------------------- |
+| Quick translate selection       | yes                                 |
+| Open window for selection       | yes                                 |
+| Open translate & polish window  | no (opens with an empty scratchpad) |
+| Translate and replace selection | yes                                 |
 
 Assign hotkeys to them in **Settings → Hotkeys**.
 
@@ -37,22 +41,28 @@ Assign hotkeys to them in **Settings → Hotkeys**.
 
 ### Provider endpoints
 
-| Provider | Chat | Models |
-|---|---|---|
-| Ollama | `{baseUrl}/api/chat` | `{baseUrl}/api/tags` |
-| Open WebUI | `{baseUrl}/api/chat/completions` | `{baseUrl}/api/models` |
+| Provider   | Chat                                            | Models                                |
+| ---------- | ----------------------------------------------- | ------------------------------------- |
+| Ollama     | `{baseUrl}/api/chat`                            | `{baseUrl}/api/tags`                  |
+| Open WebUI | `{baseUrl}/api/chat/completions`                | `{baseUrl}/api/models`                |
 | OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `https://openrouter.ai/api/v1/models` |
 
 ## Upgrading from 1.x
 
-Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin was renamed to Translate and Polish and its id changed from `obsidian-translate-block` to `translate-polish`: install it into `.obsidian/plugins/translate-polish/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ```` ```translate-block ```` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
+Version 2.0 requires Obsidian **1.11.4** or newer and removes the `translate-block` code block and the side panel. The plugin was renamed to Translate and Polish and its id changed from `obsidian-translate-block` to `translate-polish`: install it into `.obsidian/plugins/translate-polish/` and, to keep your settings, move the old folder's `data.json` there before enabling it. Existing ` ```translate-block ` fences in your notes are left untouched and render as ordinary code blocks; nothing is deleted.
 
-Settings are migrated automatically: the old endpoint URL and model list become the Ollama provider's base URL and model list, the default model is bound to both tasks, and an `Authorization: Bearer …` line from *Extra headers* is moved into secret storage as the Ollama API key.
+Settings are migrated automatically: the old endpoint URL and model list become the Ollama provider's base URL and model list, the default model is bound to both tasks, and an `Authorization: Bearer …` line from _Extra headers_ is moved into secret storage as the Ollama API key.
 
 ## Development
 
 ```bash
-npm install
-npm test        # unit tests for the response parser, settings migration and provider mapping
-npm run build   # type-check and bundle main.js / styles.css
+npm install                # also installs the husky pre-commit hook (Prettier on staged files)
+npm run dev                # rebuild main.js / styles.css on change; set OUTDIR to write into a vault
+npm run lint               # ESLint with eslint-plugin-obsidianmd
+npm run typecheck          # tsc over src/ and tests/
+npm test                   # Jest under jsdom; add -- --coverage to enforce the thresholds
+npm run format             # Prettier over src/ and tests/
+npm run build              # type-check src/ and bundle main.js / styles.css
 ```
+
+Layout: `src/` plugin source · `tests/unit/` Jest suites · `tests/helpers/` Obsidian test double and jsdom setup · `pkm/` internal plans, requirements and the project brief.
