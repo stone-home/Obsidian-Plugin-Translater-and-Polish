@@ -63,6 +63,9 @@ export function defaultProviders(): Record<ProviderId, ProviderConfig> {
 		ollama: cloneProviderConfig(PROVIDER_DEFAULTS.ollama),
 		openrouter: cloneProviderConfig(PROVIDER_DEFAULTS.openrouter),
 		openwebui: cloneProviderConfig(PROVIDER_DEFAULTS.openwebui),
+		'openai-compatible': cloneProviderConfig(
+			PROVIDER_DEFAULTS['openai-compatible']
+		),
 	};
 }
 

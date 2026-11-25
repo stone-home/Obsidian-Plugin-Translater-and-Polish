@@ -1,6 +1,6 @@
 # Translate and Polish
 
-Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI** or a local **Ollama** server.
+Translate selected text and make your own writing sound native, inside Obsidian, using **OpenRouter**, **Open WebUI**, an **OpenAI-compatible** server (such as LiteLLM) or a local **Ollama** server.
 
 Write in a language that is not your first, select the passage, and the plugin gives you two things: a translation into your target language so you can check the meaning, and a rewrite of your original text the way a native speaker would phrase it, with notes on what changed. Either result can be put back into the note.
 
@@ -10,7 +10,7 @@ Write in a language that is not your first, select the passage, and the plugin g
 - **Translate and polish window** — a centered workbench with a scratchpad on the left that re-translates as you pause typing, and two results on the right, _Native rewrite of your text_ (same language as the input) and _Translation_, plus a collapsible _What changed_ list explaining the rewrite. Click **Use this** on a result, then **Replace selection** (**Insert at cursor** when nothing was selected), **Insert as callout**, or **Copy**. **Run now** or `Ctrl/Cmd+Enter` translates immediately; the toolbar can also swap languages and fetch models from all providers.
 - **Translate and replace selection** — no window; the selection is replaced with the direct translation.
 - **Two tasks, two models.** Translation and native rewrite are separate requests, each bound to its own provider and model. A dedicated translation model (for example translategemma on Ollama) can handle the translation while a general instruction-following model does the rewrite. The quick bubble requests the rewrite only when you switch to it.
-- **Three providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
+- **Four providers** with one-click model list fetching. API keys live in Obsidian's secret storage, not in the plugin's data file.
 
 ## Installation
 
@@ -41,11 +41,14 @@ Assign hotkeys to them in **Settings → Hotkeys**.
 
 ### Provider endpoints
 
-| Provider   | Chat                                            | Models                                |
-| ---------- | ----------------------------------------------- | ------------------------------------- |
-| Ollama     | `{baseUrl}/api/chat`                            | `{baseUrl}/api/tags`                  |
-| Open WebUI | `{baseUrl}/api/chat/completions`                | `{baseUrl}/api/models`                |
-| OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `https://openrouter.ai/api/v1/models` |
+| Provider                             | Chat                                            | Models                                |
+| ------------------------------------ | ----------------------------------------------- | ------------------------------------- |
+| Ollama                               | `{baseUrl}/api/chat`                            | `{baseUrl}/api/tags`                  |
+| Open WebUI                           | `{baseUrl}/api/chat/completions`                | `{baseUrl}/api/models`                |
+| OpenRouter                           | `https://openrouter.ai/api/v1/chat/completions` | `https://openrouter.ai/api/v1/models` |
+| OpenAI Compatible (LiteLLM, vLLM, …) | `{baseUrl}/v1/chat/completions`                 | `{baseUrl}/v1/models`                 |
+
+For OpenAI Compatible, a trailing `/v1` in the base URL is not duplicated (`http://host:4000` and `http://host:4000/v1` both work).
 
 ## Upgrading from 1.x
 

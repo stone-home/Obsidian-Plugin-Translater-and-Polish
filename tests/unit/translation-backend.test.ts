@@ -105,6 +105,24 @@ describe('HttpTranslationBackend.complete', () => {
 		expect(defined(call.headers)['X-Title']).toBeDefined();
 	});
 
+	it('posts to the OpenAI-compatible /v1 endpoint without doubling /v1', async () => {
+		requestUrl.mockResolvedValue(
+			response(200, { choices: [{ message: { content: 'Hola' } }] })
+		);
+		const reply = await backend.complete('S', 'Hello', {
+			...base,
+			provider: 'openai-compatible',
+			baseUrl: 'http://localhost:4000/v1/',
+			apiKey: 'sk-lite',
+			model: 'gpt-x',
+		});
+		expect(reply).toBe('Hola');
+		const call = requestUrl.mock.calls[0][0];
+		expect(call.url).toBe('http://localhost:4000/v1/chat/completions');
+		expect(defined(call.headers).Authorization).toBe('Bearer sk-lite');
+		expect(defined(call.headers)['X-Title']).toBeUndefined();
+	});
+
 	it('throws on HTTP errors with a body snippet', async () => {
 		requestUrl.mockResolvedValue(response(401, { error: 'bad key' }));
 		await expect(
@@ -168,6 +186,15 @@ describe('HttpTranslationBackend.listModels', () => {
 		await expect(
 			backend.listModels({ ...base, provider: 'openwebui', baseUrl: 'http://w' })
 		).resolves.toEqual(['z']);
+		requestUrl.mockResolvedValueOnce(response(200, { data: [{ id: 'gpt-x' }] }));
+		await expect(
+			backend.listModels({
+				...base,
+				provider: 'openai-compatible',
+				baseUrl: 'http://l:4000',
+			})
+		).resolves.toEqual(['gpt-x']);
+		expect(requestUrl.mock.calls[2][0].url).toBe('http://l:4000/v1/models');
 	});
 
 	it('throws on HTTP and parse errors', async () => {

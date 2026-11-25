@@ -4,18 +4,20 @@
  * unit-tested.
  */
 
-export type ProviderId = 'ollama' | 'openrouter' | 'openwebui';
+export type ProviderId = 'ollama' | 'openrouter' | 'openwebui' | 'openai-compatible';
 
 export const PROVIDER_IDS: readonly ProviderId[] = [
 	'ollama',
 	'openrouter',
 	'openwebui',
+	'openai-compatible',
 ];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
 	ollama: 'Ollama',
 	openrouter: 'OpenRouter',
 	openwebui: 'Open WebUI',
+	'openai-compatible': 'OpenAI Compatible',
 };
 
 export interface ProviderConfig {
@@ -40,6 +42,11 @@ export const PROVIDER_DEFAULTS: Record<ProviderId, ProviderConfig> = {
 	},
 	openwebui: {
 		baseUrl: 'http://localhost:3000',
+		models: [],
+		extraHeadersRaw: '',
+	},
+	'openai-compatible': {
+		baseUrl: 'http://localhost:4000',
 		models: [],
 		extraHeadersRaw: '',
 	},
@@ -68,6 +75,12 @@ export function normalizeBaseUrl(id: ProviderId, baseUrl: string): string {
 	return trimmed || PROVIDER_DEFAULTS[id].baseUrl;
 }
 
+/** Base URL ending in `/v1`; appended when the user gave only the origin. */
+function openAiV1Base(baseUrl: string): string {
+	const base = normalizeBaseUrl('openai-compatible', baseUrl);
+	return /\/v1$/i.test(base) ? base : `${base}/v1`;
+}
+
 export function chatUrl(id: ProviderId, baseUrl: string): string {
 	const base = normalizeBaseUrl(id, baseUrl);
 	switch (id) {
@@ -77,6 +90,8 @@ export function chatUrl(id: ProviderId, baseUrl: string): string {
 			return `${base}/api/chat/completions`;
 		case 'openrouter':
 			return `${base}/api/v1/chat/completions`;
+		case 'openai-compatible':
+			return `${openAiV1Base(baseUrl)}/chat/completions`;
 	}
 }
 
@@ -89,6 +104,8 @@ export function modelsUrl(id: ProviderId, baseUrl: string): string {
 			return `${base}/api/models`;
 		case 'openrouter':
 			return `${base}/api/v1/models`;
+		case 'openai-compatible':
+			return `${openAiV1Base(baseUrl)}/models`;
 	}
 }
 
@@ -173,6 +190,7 @@ export function mapModelsResponse(id: ProviderId, json: unknown): string[] {
 			break;
 		case 'openwebui':
 		case 'openrouter':
+		case 'openai-compatible':
 			names = collectStrings(data.data, 'id');
 			break;
 	}

@@ -32,6 +32,27 @@ describe('URL builders', () => {
 
 	it('falls back to the provider default when the base URL is blank', () => {
 		expect(normalizeBaseUrl('openwebui', '   ')).toBe('http://localhost:3000');
+		expect(normalizeBaseUrl('openai-compatible', '   ')).toBe(
+			'http://localhost:4000'
+		);
+	});
+
+	it('builds OpenAI-compatible URLs with or without a /v1 suffix', () => {
+		expect(chatUrl('openai-compatible', 'http://localhost:4000/')).toBe(
+			'http://localhost:4000/v1/chat/completions'
+		);
+		expect(modelsUrl('openai-compatible', 'http://localhost:4000')).toBe(
+			'http://localhost:4000/v1/models'
+		);
+		expect(chatUrl('openai-compatible', 'https://gw.example.com/litellm/v1/')).toBe(
+			'https://gw.example.com/litellm/v1/chat/completions'
+		);
+		expect(
+			modelsUrl('openai-compatible', 'https://gw.example.com/litellm/V1')
+		).toBe('https://gw.example.com/litellm/V1/models');
+		expect(chatUrl('openai-compatible', '')).toBe(
+			'http://localhost:4000/v1/chat/completions'
+		);
 	});
 });
 
@@ -68,6 +89,10 @@ describe('mapModelsResponse', () => {
 		const json = { data: [{ id: 'b/model' }, { id: 'a/model' }, { nope: 1 }] };
 		expect(mapModelsResponse('openrouter', json)).toEqual(['a/model', 'b/model']);
 		expect(mapModelsResponse('openwebui', json)).toEqual(['a/model', 'b/model']);
+		expect(mapModelsResponse('openai-compatible', json)).toEqual([
+			'a/model',
+			'b/model',
+		]);
 	});
 
 	it('returns an empty list for malformed input', () => {
@@ -79,7 +104,12 @@ describe('mapModelsResponse', () => {
 
 describe('secretId', () => {
 	it('is lowercase alphanumeric with dashes', () => {
-		for (const id of ['ollama', 'openrouter', 'openwebui'] as const) {
+		for (const id of [
+			'ollama',
+			'openrouter',
+			'openwebui',
+			'openai-compatible',
+		] as const) {
 			expect(secretId(id)).toMatch(/^[a-z0-9-]+$/);
 		}
 	});

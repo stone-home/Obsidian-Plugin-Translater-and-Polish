@@ -3,7 +3,7 @@
 	"name": "Translate and Polish",
 	"version": "2.0.0",
 	"minAppVersion": "1.11.4",
-	"description": "Translate selected text and rewrite your writing as a native speaker, using OpenRouter, Open WebUI or Ollama models.",
+	"description": "Translate selected text and rewrite your writing as a native speaker, using OpenRouter, Open WebUI, OpenAI-compatible or Ollama models.",
 	"author": "Stone",
 	"authorUrl": "https://github.com/stone-home/Obsidian-Plugin-Translate-Code-Block/blob/trunk/README.md",
 	"isDesktopOnly": false

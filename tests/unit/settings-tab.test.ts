@@ -43,6 +43,7 @@ describe('TranslatePolishSettingTab', () => {
 			'Ollama',
 			'OpenRouter',
 			'Open WebUI',
+			'OpenAI Compatible',
 			'Translation',
 			'Advanced',
 		]);
@@ -50,10 +51,13 @@ describe('TranslatePolishSettingTab', () => {
 		expect(settingsNamed(tab.containerEl, 'Native rewrite model')).toHaveLength(1);
 		// Ollama has no API key field; OpenRouter has no base URL field.
 		expect(tab.containerEl.querySelectorAll('input[type="password"]')).toHaveLength(
-			2
+			3
 		);
-		expect(settingsNamed(tab.containerEl, 'Base URL')).toHaveLength(2);
-		expect(settingsNamed(tab.containerEl, 'Available models')).toHaveLength(3);
+		expect(settingsNamed(tab.containerEl, 'Base URL')).toHaveLength(3);
+		expect(settingByName(tab.containerEl, 'Base URL', 2).textContent).toContain(
+			'or /v1 base URL'
+		);
+		expect(settingsNamed(tab.containerEl, 'Available models')).toHaveLength(4);
 		expect(
 			settingByName(tab.containerEl, 'Available models', 0).textContent
 		).toContain('1 model available');
@@ -245,6 +249,20 @@ describe('TranslatePolishSettingTab', () => {
 		fire(headers, 'input');
 		await flush();
 		expect(plugin.settings.providers.openwebui.extraHeadersRaw).toBe('X-A: 1');
+
+		const oaiHeaders = defined(
+			settingByName(
+				tab.containerEl,
+				'Extra headers (OpenAI Compatible)'
+			).querySelector('textarea'),
+			'textarea'
+		);
+		oaiHeaders.value = 'X-B: 2';
+		fire(oaiHeaders, 'input');
+		await flush();
+		expect(plugin.settings.providers['openai-compatible'].extraHeadersRaw).toBe(
+			'X-B: 2'
+		);
 
 		defined(
 			settingByName(tab.containerEl, 'Debug').querySelector<HTMLElement>(

@@ -94,11 +94,13 @@ export class TranslatePolishSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName(PROVIDER_LABELS[id]).setHeading();
 
 		if (providerHasBaseUrl(id)) {
+			const desc =
+				id === 'openai-compatible'
+					? `Server origin or /v1 base URL (default ${PROVIDER_DEFAULTS[id].baseUrl}).`
+					: `Server origin, without the endpoint path (default ${PROVIDER_DEFAULTS[id].baseUrl}).`;
 			new Setting(containerEl)
 				.setName('Base URL')
-				.setDesc(
-					`Server origin, without the endpoint path (default ${PROVIDER_DEFAULTS[id].baseUrl}).`
-				)
+				.setDesc(desc)
 				.addText((text) =>
 					text
 						.setPlaceholder(PROVIDER_DEFAULTS[id].baseUrl)
