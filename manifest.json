@@ -1,7 +1,7 @@
 {
 	"id": "translate-polish",
 	"name": "Translate and Polish",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"minAppVersion": "1.11.4",
 	"description": "Translate selected text and rewrite your writing as a native speaker, using OpenRouter, Open WebUI, OpenAI-compatible or Ollama models.",
 	"author": "Stone",
